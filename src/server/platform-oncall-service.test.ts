@@ -110,6 +110,9 @@ test("PlatformOncallService 会汇总节点、waiting、runs 与 paused agents �
     pullAssignedRun() {
       throw new Error("not implemented");
     },
+    assignQueuedWorkItem() {
+      throw new Error("not implemented");
+    },
     updateRunStatus() {
       throw new Error("not implemented");
     },

@@ -6,8 +6,7 @@
 
 - 当前入口：`src/server/platform-main.ts`
 - 独立 CLI：仓库根目录 `./themis-platform`
-- 当前状态：已落入最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 最小 agents 控制面、`projects/workspace-binding/list|detail|upsert` 最小 projects 控制面、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 最小治理读面、`oncall/summary` 值班建议读面、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`worker/runs/pull|update|complete` 最小执行链路，以及独立 `themis-platform` CLI 的 `auth platform / doctor worker-fleet / worker-fleet` 首版实现，并开始通过 `file:../themis-contracts` 依赖消费共享 access / worker / agents / collaboration / projects / work-items / oncall 契约
-- 当前状态：已落入最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 最小 agents 控制面、`projects/workspace-binding/list|detail|upsert` 最小 projects 控制面、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 最小治理读面、`oncall/summary` 值班建议读面、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`worker/runs/pull|update|complete` 最小执行链路、最小 `Web Access + Platform Service Bearer` 鉴权链，以及独立 `themis-platform` CLI 的 `auth platform / doctor worker-fleet / worker-fleet` 首版实现，并开始通过 `file:../themis-contracts` 依赖消费共享 access / worker / agents / collaboration / projects / work-items / oncall 契约
+- 当前状态：已落入最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 最小 agents 控制面、`projects/workspace-binding/list|detail|upsert` 最小 projects 控制面、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 最小治理读面、`oncall/summary` 值班建议读面、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、最小 `Web Access + Platform Service Bearer` 鉴权链，以及 `worker/runs/pull|update|complete` 的首版自动调度执行链路；当前 `worker pull` 已能把 `queued work-item` 结合项目工作区绑定自动分配成新 `run + execution lease`，并继续通过 `file:../themis-contracts` 消费共享 access / worker / agents / collaboration / projects / work-items / oncall 契约
 - 迁移依据：请对照 `themis` 主仓里的 `docs/repository/themis-three-layer-split-migration-checklist.md`
 
 当前最小能力：
@@ -24,7 +23,7 @@
 - `POST /api/platform/work-items/list|detail|dispatch|respond|escalate|cancel` 提供最小 work-items 协作主链 API
 - `POST /api/platform/agents/mailbox/list|pull|ack|respond` 提供最小 mailbox 读写 API
 - `POST /api/platform/runs/list|detail` 提供最小 recent runs 读面
-- `POST /api/platform/worker/runs/pull|update|complete` 提供最小 Worker 执行回传 API
+- `POST /api/platform/worker/runs/pull|update|complete` 提供最小 Worker 执行回传 API，其中 `pull` 已能把 `queued work-item` 自动转成 `run + execution lease`
 - `./themis-platform auth platform list|add|remove|rename` 提供平台服务令牌的最小本地治理入口
 - `./themis-platform doctor worker-fleet` 提供 Worker Fleet 巡检摘要
 - `./themis-platform worker-fleet <drain|offline|reclaim>` 提供最小节点治理 CLI
@@ -55,5 +54,6 @@
 - `doctor worker-fleet` 与 `worker-fleet` 已迁入独立平台仓，但当前仍只覆盖最小节点值班与治理闭环。
 - 当前治理页已覆盖最小 `agents + projects + governance-overview + waiting/list + collaboration-dashboard + handoffs/list + oncall/summary + work-items + mailbox + recent runs`。
 - 当前 `platform-main` 已具备真实部署入口和最小 `Web Access + Bearer` 鉴权语义，但平台事实仍是 in-memory；后续还需继续迁入 MySQL shared control plane 与 scheduler/runtime 主链，才能替换现网平台服务。
+- 当前 scheduler/runtime 主链已补入第一刀：`worker pull` 会根据节点所属组织挑选最高优先级 `queued work-item`，并优先使用 `projects/workspace-binding` 里的 `lastActiveWorkspacePath / canonicalWorkspacePath` 生成执行合同；但平台事实仍是 in-memory，尚未接入现网 MySQL shared control plane。
 
 下一步应优先把本地 token 存储与平台服务端鉴权事实继续收口到同一控制面，再逐步把当前 in-memory 平台事实换成真实持久化控制面。

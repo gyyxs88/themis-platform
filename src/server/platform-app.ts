@@ -58,7 +58,11 @@ import { createInMemoryPlatformGovernanceService, type PlatformGovernanceService
 import { createInMemoryPlatformNodeService, type PlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformOncallService, type PlatformOncallService } from "./platform-oncall-service.js";
 import { createInMemoryPlatformWorkerRunService, type PlatformWorkerRunService } from "./platform-worker-run-service.js";
-import { createInMemoryPlatformWorkflowService, type PlatformWorkflowService } from "./platform-workflow-service.js";
+import {
+  createInMemoryPlatformWorkflowService,
+  type PlatformQueuedWorkItemContext,
+  type PlatformWorkflowService,
+} from "./platform-workflow-service.js";
 import {
   buildPlatformServiceOwnerMismatchBody,
   createPlatformWebAccessService,
@@ -72,6 +76,7 @@ export interface PlatformAppOptions {
   serviceName?: string;
   appDisplayName?: string;
   accessMode?: "open" | "protected";
+  defaultWorkspacePath?: string;
   nodeService?: PlatformNodeService;
   workerRunService?: PlatformWorkerRunService;
   governanceService?: PlatformGovernanceService;
@@ -87,6 +92,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
   const serviceName = options.serviceName ?? "themis-platform";
   const appDisplayName = options.appDisplayName ?? "Themis Platform";
   const accessMode = options.accessMode ?? "open";
+  const defaultWorkspacePath = options.defaultWorkspacePath ?? "/tmp/themis-shared-worker-v1";
   const nodeService = options.nodeService ?? createInMemoryPlatformNodeService();
   const workerRunService = options.workerRunService ?? createInMemoryPlatformWorkerRunService({
     nodeService,
@@ -119,6 +125,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       serviceName,
       appDisplayName,
       accessMode,
+      defaultWorkspacePath,
       nodeService,
       workerRunService,
       governanceService,
@@ -136,6 +143,7 @@ interface HandlePlatformRequestOptions {
   serviceName: string;
   appDisplayName: string;
   accessMode: "open" | "protected";
+  defaultWorkspacePath: string;
   nodeService: PlatformNodeService;
   workerRunService: PlatformWorkerRunService;
   governanceService: PlatformGovernanceService;
@@ -546,7 +554,13 @@ async function handlePlatformRequest(
       if (!payload) {
         return;
       }
-      const result = options.workerRunService.pullAssignedRun(payload);
+      let result = options.workerRunService.pullAssignedRun(payload);
+
+      if (!result) {
+        const scheduled = scheduleQueuedWorkItemForNode(payload, options);
+        result = scheduled ?? options.workerRunService.pullAssignedRun(payload);
+      }
+
       return writeJson(response, 200, result ?? {});
     }
 
@@ -624,6 +638,74 @@ async function readAuthorizedPayload<T extends { ownerPrincipalId: string }>(
   }
 
   return payload;
+}
+
+function scheduleQueuedWorkItemForNode(
+  payload: ManagedAgentPlatformWorkerPullPayload,
+  options: HandlePlatformRequestOptions,
+) {
+  const nodeDetail = options.nodeService.getNodeDetail({
+    ownerPrincipalId: payload.ownerPrincipalId,
+    nodeId: payload.nodeId,
+  });
+
+  if (!nodeDetail || nodeDetail.node.status !== "online") {
+    return null;
+  }
+
+  const excludedWorkItemIds = options.workerRunService.listAssignedRuns({
+    ownerPrincipalId: payload.ownerPrincipalId,
+    organizationId: nodeDetail.organization.organizationId,
+  }).map((assignedRun) => assignedRun.workItem.workItemId);
+
+  const queuedWorkItem = options.workflowService.claimNextQueuedWorkItem({
+    ownerPrincipalId: payload.ownerPrincipalId,
+    organizationId: nodeDetail.organization.organizationId,
+    excludeWorkItemIds: excludedWorkItemIds,
+  });
+
+  if (!queuedWorkItem) {
+    return null;
+  }
+
+  return options.workerRunService.assignQueuedWorkItem({
+    ownerPrincipalId: payload.ownerPrincipalId,
+    nodeId: payload.nodeId,
+    organization: queuedWorkItem.organization,
+    targetAgent: queuedWorkItem.targetAgent,
+    workItem: queuedWorkItem.workItem,
+    workspacePath: resolveWorkspacePathForQueuedWorkItem(
+      payload.ownerPrincipalId,
+      queuedWorkItem,
+      options,
+    ),
+  });
+}
+
+function resolveWorkspacePathForQueuedWorkItem(
+  ownerPrincipalId: string,
+  queuedWorkItem: PlatformQueuedWorkItemContext,
+  options: HandlePlatformRequestOptions,
+): string {
+  const projectId = typeof queuedWorkItem.workItem.projectId === "string"
+    ? queuedWorkItem.workItem.projectId.trim()
+    : "";
+
+  if (projectId) {
+    const binding = options.controlPlaneService.getProjectWorkspaceBinding({
+      ownerPrincipalId,
+      projectId,
+    });
+    const projectBinding = binding?.binding ?? null;
+    const preferredWorkspacePath = projectBinding?.lastActiveWorkspacePath
+      ?? projectBinding?.canonicalWorkspacePath;
+
+    if (preferredWorkspacePath) {
+      return preferredWorkspacePath;
+    }
+  }
+
+  return options.defaultWorkspacePath;
 }
 
 function buildNotFoundErrorResponse(message: string): { error: { code: "NOT_FOUND"; message: string } } {

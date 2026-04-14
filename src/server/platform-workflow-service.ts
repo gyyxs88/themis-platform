@@ -42,6 +42,8 @@ interface PlatformWorkItemContext {
   workItem: ManagedAgentPlatformWorkItemRecord;
 }
 
+export interface PlatformQueuedWorkItemContext extends PlatformWorkItemContext {}
+
 export interface PlatformAgentSeed {
   ownerPrincipalId: string;
   organization: ManagedAgentPlatformOrganizationRecord;
@@ -61,6 +63,11 @@ export interface PlatformMailboxSeed {
 export interface PlatformWorkflowService {
   listWorkItems(payload: ManagedAgentPlatformWorkItemListPayload): ManagedAgentPlatformWorkItemListResult;
   getWorkItemDetail(payload: ManagedAgentPlatformWorkItemDetailPayload): ManagedAgentPlatformWorkItemDetailResult | null;
+  claimNextQueuedWorkItem(input: {
+    ownerPrincipalId: string;
+    organizationId?: string;
+    excludeWorkItemIds?: string[];
+  }): PlatformQueuedWorkItemContext | null;
   dispatchWorkItem(payload: ManagedAgentPlatformWorkItemDispatchPayload): ManagedAgentPlatformWorkItemDispatchResult;
   cancelWorkItem(payload: ManagedAgentPlatformWorkItemCancelPayload): ManagedAgentPlatformWorkItemCancelResult | null;
   respondToWorkItem(payload: ManagedAgentPlatformWorkItemRespondPayload): ManagedAgentPlatformWorkItemRespondResult | null;
@@ -159,6 +166,21 @@ export function createInMemoryPlatformWorkflowService(
           : [],
         ...(latestHandoff ? { latestHandoff: { ...latestHandoff } } : { latestHandoff: null }),
       } satisfies ManagedAgentPlatformWorkItemDetailView;
+    },
+
+    claimNextQueuedWorkItem(input) {
+      const excludedWorkItemIds = new Set(
+        (input.excludeWorkItemIds ?? [])
+          .map((value) => normalizeOptionalText(value))
+          .filter((value): value is string => Boolean(value)),
+      );
+      const context = listAllWorkItemContexts(input.ownerPrincipalId)
+        .filter((candidate) => candidate.workItem.status === "queued")
+        .filter((candidate) => !input.organizationId || candidate.organization.organizationId === input.organizationId)
+        .filter((candidate) => !excludedWorkItemIds.has(candidate.workItem.workItemId))
+        .sort((left, right) => compareWorkItems(left.workItem, right.workItem))[0];
+
+      return context ? cloneWorkItemContext(context) : null;
     },
 
     dispatchWorkItem(payload) {
@@ -836,4 +858,9 @@ function cloneHandoffSeed(seed: PlatformAgentHandoffSeed): PlatformAgentHandoffS
 
 function normalizeText(value: string | null | undefined) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalText(value: string | null | undefined): string | null {
+  const normalized = normalizeText(value);
+  return normalized ? normalized : null;
 }

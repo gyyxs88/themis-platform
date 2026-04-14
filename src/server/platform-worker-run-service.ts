@@ -5,6 +5,11 @@ import type {
   ManagedAgentPlatformRunListResult,
 } from "themis-contracts/managed-agent-platform-collaboration";
 import type {
+  ManagedAgentPlatformAgentRecord,
+  ManagedAgentPlatformOrganizationRecord,
+  ManagedAgentPlatformWorkItemRecord,
+} from "themis-contracts/managed-agent-platform-shared";
+import type {
   ManagedAgentPlatformWorkerAssignedRunResult,
   ManagedAgentPlatformWorkerPullPayload,
   ManagedAgentPlatformWorkerRunCompletePayload,
@@ -15,6 +20,14 @@ import type { PlatformNodeService } from "./platform-node-service.js";
 
 export interface PlatformWorkerRunService {
   pullAssignedRun(payload: ManagedAgentPlatformWorkerPullPayload): ManagedAgentPlatformWorkerAssignedRunResult | null;
+  assignQueuedWorkItem(input: {
+    ownerPrincipalId: string;
+    nodeId: string;
+    organization: ManagedAgentPlatformOrganizationRecord;
+    targetAgent: ManagedAgentPlatformAgentRecord;
+    workItem: ManagedAgentPlatformWorkItemRecord;
+    workspacePath: string;
+  }): ManagedAgentPlatformWorkerAssignedRunResult | null;
   updateRunStatus(payload: ManagedAgentPlatformWorkerRunStatusPayload): ManagedAgentPlatformWorkerRunMutationResult | null;
   completeRun(payload: ManagedAgentPlatformWorkerRunCompletePayload): ManagedAgentPlatformWorkerRunMutationResult | null;
   listRuns(payload: ManagedAgentPlatformRunListPayload): ManagedAgentPlatformRunListResult;
@@ -40,12 +53,18 @@ export interface InMemoryPlatformWorkerRunServiceOptions {
   nodeService: PlatformNodeService;
   now?: () => string;
   assignedRuns?: ManagedAgentPlatformWorkerAssignedRunResult[];
+  generateRunId?: () => string;
+  generateLeaseId?: () => string;
+  generateLeaseToken?: () => string;
 }
 
 export function createInMemoryPlatformWorkerRunService(
   options: InMemoryPlatformWorkerRunServiceOptions,
 ): PlatformWorkerRunService {
   const now = options.now ?? (() => new Date().toISOString());
+  const generateRunId = options.generateRunId ?? createIdFactory("run-platform");
+  const generateLeaseId = options.generateLeaseId ?? createIdFactory("lease-platform");
+  const generateLeaseToken = options.generateLeaseToken ?? createIdFactory("lease-token-platform");
   const assignedRuns = new Map<string, ManagedAgentPlatformWorkerAssignedRunResult>();
 
   for (const assignedRun of options.assignedRuns ?? []) {
@@ -78,6 +97,61 @@ export function createInMemoryPlatformWorkerRunService(
         ...detail.node,
       };
       return cloneAssignedRun(candidate);
+    },
+
+    assignQueuedWorkItem(input) {
+      const existing = findAssignedRunByWorkItem(assignedRuns, input.ownerPrincipalId, input.workItem.workItemId);
+
+      if (existing) {
+        return cloneAssignedRun(existing);
+      }
+
+      const detail = options.nodeService.getNodeDetail({
+        ownerPrincipalId: input.ownerPrincipalId,
+        nodeId: input.nodeId,
+      });
+
+      if (!detail || detail.node.status !== "online") {
+        return null;
+      }
+
+      const timestamp = now();
+      const runId = generateRunId();
+      const leaseId = generateLeaseId();
+      const leaseToken = generateLeaseToken();
+      const assignedRun: ManagedAgentPlatformWorkerAssignedRunResult = {
+        organization: { ...input.organization },
+        node: { ...detail.node },
+        targetAgent: { ...input.targetAgent },
+        workItem: {
+          ...input.workItem,
+          updatedAt: input.workItem.updatedAt ?? timestamp,
+        },
+        run: {
+          runId,
+          organizationId: input.organization.organizationId,
+          workItemId: input.workItem.workItemId,
+          nodeId: detail.node.nodeId,
+          status: "created",
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        executionLease: {
+          leaseId,
+          runId,
+          nodeId: detail.node.nodeId,
+          workItemId: input.workItem.workItemId,
+          leaseToken,
+          status: "active",
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        executionContract: {
+          workspacePath: normalizeRequiredText(input.workspacePath, "workspacePath is required."),
+        },
+      };
+      assignedRuns.set(runId, cloneAssignedRun(assignedRun));
+      return cloneAssignedRun(assignedRun);
     },
 
     updateRunStatus(payload) {
@@ -337,6 +411,25 @@ function cloneAssignedRun(
     executionLease: { ...assignedRun.executionLease },
     executionContract: { ...assignedRun.executionContract },
   };
+}
+
+function createIdFactory(prefix: string) {
+  let counter = 0;
+
+  return () => {
+    counter += 1;
+    return `${prefix}-${counter}`;
+  };
+}
+
+function normalizeRequiredText(value: string | null | undefined, message: string): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+
+  if (!normalized) {
+    throw new Error(message);
+  }
+
+  return normalized;
 }
 
 function normalizeTimestamp(value: string | undefined, fallbackNow: () => string): string {
