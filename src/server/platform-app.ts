@@ -92,6 +92,22 @@ async function handlePlatformRequest(
         : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
     }
 
+    if (method === "POST" && url.pathname === "/api/platform/nodes/drain") {
+      const payload = await readJsonBody<ManagedAgentPlatformNodeDetailPayload>(request);
+      const result = options.nodeService.drainNode(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/nodes/offline") {
+      const payload = await readJsonBody<ManagedAgentPlatformNodeDetailPayload>(request);
+      const result = options.nodeService.offlineNode(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+    }
+
     if (url.pathname.startsWith("/api/")) {
       return writeJson(response, 404, buildPlatformRouteNotFoundErrorResponse(url.pathname));
     }

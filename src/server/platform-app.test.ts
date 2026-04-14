@@ -132,6 +132,39 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     assert.equal(heartbeatPayload.node?.status, "draining");
     assert.equal(heartbeatPayload.node?.slotAvailable, 0);
 
+    const drain = await fetch(`${baseUrl}/api/platform/nodes/drain`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-alpha",
+      }),
+    });
+    assert.equal(drain.status, 200);
+    const drainPayload = await drain.json() as {
+      node?: { status?: string };
+    };
+    assert.equal(drainPayload.node?.status, "draining");
+
+    const offline = await fetch(`${baseUrl}/api/platform/nodes/offline`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-alpha",
+      }),
+    });
+    assert.equal(offline.status, 200);
+    const offlinePayload = await offline.json() as {
+      node?: { status?: string; slotAvailable?: number };
+    };
+    assert.equal(offlinePayload.node?.status, "offline");
+    assert.equal(offlinePayload.node?.slotAvailable, 0);
+
     const blocked = await fetch(`${baseUrl}/api/runtime/config`);
     assert.equal(blocked.status, 404);
     assert.deepEqual(await blocked.json(), {

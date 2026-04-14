@@ -3,6 +3,7 @@ import type {
   ManagedAgentPlatformNodeHeartbeatPayload,
   ManagedAgentPlatformNodeListPayload,
   ManagedAgentPlatformNodeRegisterPayload,
+  ManagedAgentPlatformWorkerNodeDetailInput,
   ManagedAgentPlatformWorkerNodeDetailResult,
   ManagedAgentPlatformWorkerNodeMutationResult,
   ManagedAgentPlatformWorkerNodeRecord,
@@ -14,6 +15,12 @@ export interface PlatformNodeService {
   heartbeatNode(payload: ManagedAgentPlatformNodeHeartbeatPayload): ManagedAgentPlatformWorkerNodeMutationResult | null;
   listNodes(payload: ManagedAgentPlatformNodeListPayload): ManagedAgentPlatformWorkerNodeRecord[];
   getNodeDetail(payload: ManagedAgentPlatformNodeDetailPayload): ManagedAgentPlatformWorkerNodeDetailResult | null;
+  drainNode(payload: PlatformNodeMutationPayload): ManagedAgentPlatformWorkerNodeMutationResult | null;
+  offlineNode(payload: PlatformNodeMutationPayload): ManagedAgentPlatformWorkerNodeMutationResult | null;
+}
+
+export interface PlatformNodeMutationPayload extends ManagedAgentPlatformWorkerNodeDetailInput {
+  ownerPrincipalId: string;
 }
 
 export interface InMemoryPlatformNodeServiceOptions {
@@ -151,6 +158,48 @@ export function createInMemoryPlatformNodeService(
         leases: [],
       };
     },
+
+    drainNode(payload) {
+      return mutateNodeStatus(organizations, nodes, payload, "draining");
+    },
+
+    offlineNode(payload) {
+      return mutateNodeStatus(organizations, nodes, payload, "offline", {
+        slotAvailable: 0,
+      });
+    },
+  };
+}
+
+function mutateNodeStatus(
+  organizations: Map<string, ManagedAgentPlatformWorkerOrganizationRecord>,
+  nodes: Map<string, ManagedAgentPlatformWorkerNodeRecord>,
+  payload: PlatformNodeMutationPayload,
+  status: ManagedAgentPlatformWorkerNodeRecord["status"],
+  overrides: Partial<ManagedAgentPlatformWorkerNodeRecord> = {},
+): ManagedAgentPlatformWorkerNodeMutationResult | null {
+  const node = nodes.get(payload.nodeId);
+
+  if (!node) {
+    return null;
+  }
+
+  const organization = organizations.get(node.organizationId);
+
+  if (!organization || organization.ownerPrincipalId !== payload.ownerPrincipalId) {
+    return null;
+  }
+
+  const updatedNode: ManagedAgentPlatformWorkerNodeRecord = {
+    ...node,
+    status,
+    ...overrides,
+    updatedAt: node.updatedAt,
+  };
+  nodes.set(updatedNode.nodeId, updatedNode);
+  return {
+    organization,
+    node: updatedNode,
   };
 }
 

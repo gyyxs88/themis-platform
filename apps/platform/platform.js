@@ -67,6 +67,7 @@ export function initializePlatformSurface(options = {}) {
   };
   const state = {
     loading: false,
+    actionNodeId: "",
     errorMessage: "",
     tokenLabel: "",
     ownerPrincipalId: resolveInitialOwnerPrincipalId(
@@ -108,11 +109,11 @@ export function initializePlatformSurface(options = {}) {
     }
 
     if (dom.ownerSubmitButton) {
-      dom.ownerSubmitButton.disabled = state.loading;
+      dom.ownerSubmitButton.disabled = state.loading || Boolean(state.actionNodeId);
     }
 
     if (dom.refreshButton) {
-      dom.refreshButton.disabled = state.loading;
+      dom.refreshButton.disabled = state.loading || Boolean(state.actionNodeId);
     }
 
     if (dom.nodesStatus) {
@@ -214,6 +215,48 @@ export function initializePlatformSurface(options = {}) {
     }
   };
 
+  const updateNodeStatus = async (nodeId, action) => {
+    const normalizedNodeId = typeof nodeId === "string" ? nodeId.trim() : "";
+
+    if (!normalizedNodeId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.actionNodeId = normalizedNodeId;
+    state.errorMessage = "";
+    render();
+
+    try {
+      const response = await fetchFn(`/api/platform/nodes/${action}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          ownerPrincipalId: state.ownerPrincipalId,
+          nodeId: normalizedNodeId,
+        }),
+      });
+      const payload = await safeReadJson(response);
+
+      if (!response.ok) {
+        throw new Error(readErrorMessage(payload, `节点 ${action} 失败。`));
+      }
+
+      const updatedNode = payload?.node;
+
+      if (updatedNode?.nodeId) {
+        state.nodes = state.nodes.map((node) => node?.nodeId === updatedNode.nodeId ? updatedNode : node);
+      }
+    } catch (error) {
+      state.errorMessage = error instanceof Error ? error.message : `节点 ${action} 失败。`;
+    } finally {
+      state.actionNodeId = "";
+      render();
+    }
+  };
+
   dom.ownerForm?.addEventListener("submit", (event) => {
     event.preventDefault();
     void loadNodes();
@@ -221,6 +264,23 @@ export function initializePlatformSurface(options = {}) {
 
   dom.refreshButton?.addEventListener("click", () => {
     void loadNodes();
+  });
+
+  dom.nodesList?.addEventListener("click", (event) => {
+    const actionButton = event.target instanceof HTMLElement
+      ? event.target.closest("[data-platform-node-action]")
+      : null;
+
+    if (!actionButton) {
+      return;
+    }
+
+    const action = actionButton.getAttribute("data-platform-node-action");
+    const nodeId = actionButton.getAttribute("data-platform-node-id");
+
+    if (action === "drain" || action === "offline") {
+      void updateNodeStatus(nodeId, action);
+    }
   });
 
   void (async () => {
@@ -233,6 +293,7 @@ export function initializePlatformSurface(options = {}) {
 
   return {
     loadNodes,
+    updateNodeStatus,
     render,
   };
 }
@@ -255,6 +316,7 @@ function renderNodeCard(node) {
     credentialCapabilities.length ? `凭据 ${credentialCapabilities.length}` : "",
     providerCapabilities.length ? `Provider ${providerCapabilities.length}` : "",
   ].filter(Boolean);
+  const actions = resolveNodeActions(node);
 
   return `<article class="platform-node-card">
     <div class="platform-node-head">
@@ -273,7 +335,31 @@ function renderNodeCard(node) {
     <div class="platform-node-capabilities">
       ${capabilityChips.map((item) => `<span class="platform-chip">${escapeHtml(item)}</span>`).join("")}
     </div>
+    <div class="platform-node-actions">
+      ${actions.map((action) => `<button
+        type="button"
+        class="platform-button subtle"
+        data-platform-node-action="${escapeHtml(action.id)}"
+        data-platform-node-id="${escapeHtml(node?.nodeId || "")}"
+      >${escapeHtml(action.label)}</button>`).join("")}
+    </div>
   </article>`;
+}
+
+function resolveNodeActions(node) {
+  switch (node?.status) {
+    case "online":
+      return [
+        { id: "drain", label: "Drain" },
+        { id: "offline", label: "Offline" },
+      ];
+    case "draining":
+      return [
+        { id: "offline", label: "Offline" },
+      ];
+    default:
+      return [];
+  }
 }
 
 function resolveNodeStatusLabel(status) {

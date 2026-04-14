@@ -53,6 +53,19 @@ test("createInMemoryPlatformNodeService 会支持 register、heartbeat、list �
   assert.deepEqual(heartbeat?.node.providerCapabilities, ["gateway-a", "gateway-b"]);
   assert.equal(heartbeat?.node.heartbeatTtlSeconds, 90);
 
+  const drained = service.drainNode({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-fixed",
+  });
+  assert.equal(drained?.node.status, "draining");
+
+  const offline = service.offlineNode({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-fixed",
+  });
+  assert.equal(offline?.node.status, "offline");
+  assert.equal(offline?.node.slotAvailable, 0);
+
   const detail = service.getNodeDetail({
     ownerPrincipalId: "principal-platform-owner",
     nodeId: "node-fixed",
@@ -70,4 +83,10 @@ test("createInMemoryPlatformNodeService 会支持 register、heartbeat、list �
     nodeId: "node-fixed",
   });
   assert.equal(denied, null);
+
+  const missingMutation = service.drainNode({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-missing",
+  });
+  assert.equal(missingMutation, null);
 });
