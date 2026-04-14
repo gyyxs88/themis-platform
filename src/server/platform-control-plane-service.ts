@@ -86,6 +86,7 @@ export interface PlatformControlPlaneServiceSnapshot {
 
 export interface SnapshotCapablePlatformControlPlaneService extends PlatformControlPlaneService {
   exportSnapshot(): PlatformControlPlaneServiceSnapshot;
+  replaceSnapshot(snapshot: PlatformControlPlaneServiceSnapshot): void;
 }
 
 export interface PlatformControlPlaneServiceOptions {
@@ -118,6 +119,24 @@ export function createInMemoryPlatformControlPlaneService(
       spawnPolicy: owner.spawnPolicy ? { ...owner.spawnPolicy } : null,
     });
   }
+
+  const replaceSnapshot = (snapshot: PlatformControlPlaneServiceSnapshot) => {
+    ownerStates.clear();
+
+    for (const owner of snapshot.owners) {
+      ownerStates.set(normalizeText(owner.ownerPrincipalId), {
+        organizations: new Map(owner.organizations.map((organization) => [organization.organizationId, { ...organization }])),
+        principals: new Map(owner.principals.map((principal) => [principal.principalId, { ...principal }])),
+        agents: new Map(owner.agents.map((agent) => [agent.agentId, { ...agent }])),
+        workspacePolicies: new Map(owner.workspacePolicies.map((policy) => [policy.agentId, cloneWorkspacePolicy(policy)])),
+        runtimeProfiles: new Map(owner.runtimeProfiles.map((profile) => [profile.agentId, { ...profile }])),
+        authAccounts: new Map(groupByAgentId(owner.authAccounts).map(([agentId, accounts]) => [agentId, accounts.map((account) => ({ ...account }))])),
+        thirdPartyProviders: new Map(groupByAgentId(owner.thirdPartyProviders).map(([agentId, providers]) => [agentId, providers.map((provider) => ({ ...provider }))])),
+        projectBindings: new Map(owner.projectBindings.map((binding) => [binding.projectId, cloneProjectBinding(binding)])),
+        spawnPolicy: owner.spawnPolicy ? { ...owner.spawnPolicy } : null,
+      });
+    }
+  };
 
   const ensureOwnerState = (ownerPrincipalId: string): OwnerControlPlaneState => {
     const normalizedOwnerPrincipalId = normalizeText(ownerPrincipalId);
@@ -229,6 +248,8 @@ export function createInMemoryPlatformControlPlaneService(
         })),
       };
     },
+
+    replaceSnapshot,
 
     listAgents(input) {
       const state = ensureOwnerState(input.ownerPrincipalId);

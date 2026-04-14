@@ -19,6 +19,7 @@ test("resolvePlatformMainConfig 会给平台服务使用生产监听默认值", 
     port: 3100,
     serviceName: "themis-platform",
     schedulerIntervalMs: 5000,
+    controlPlaneDriver: "sqlite",
   });
 });
 
@@ -31,6 +32,7 @@ test("resolvePlatformMainConfig 会读取 THEMIS_HOST 和 THEMIS_PORT", () => {
   assert.equal(config.host, "192.168.31.212");
   assert.equal(config.port, 3201);
   assert.equal(config.schedulerIntervalMs, 5000);
+  assert.equal(config.controlPlaneDriver, "sqlite");
   assert.match(
     bootstrapMessage(config),
     /Themis Platform server listening on http:\/\/192\.168\.31\.212:3201/,
@@ -43,6 +45,7 @@ test("resolvePlatformMainConfig 会读取 THEMIS_PLATFORM_SCHEDULER_INTERVAL_MS"
   });
 
   assert.equal(config.schedulerIntervalMs, 15000);
+  assert.equal(config.controlPlaneDriver, "sqlite");
 });
 
 test("resolvePlatformRuntimeSnapshotFile 会读取 THEMIS_PLATFORM_RUNTIME_SNAPSHOT_FILE", () => {
@@ -82,6 +85,7 @@ test("loadProjectEnv 后 resolvePlatformMainConfig 会读取 .env.local", () => 
     assert.equal(config.host, "10.0.0.12");
     assert.equal(config.port, 4123);
     assert.equal(config.schedulerIntervalMs, 5000);
+    assert.equal(config.controlPlaneDriver, "sqlite");
   } finally {
     if (typeof previousHost === "string") {
       process.env.THEMIS_HOST = previousHost;

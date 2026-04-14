@@ -78,7 +78,7 @@ export interface PlatformAppOptions {
   appDisplayName?: string;
   accessMode?: "open" | "protected";
   defaultWorkspacePath?: string;
-  onStateMutation?: () => void;
+  onStateMutation?: () => void | Promise<void>;
   executionRuntimeStore?: PlatformExecutionRuntimeStore;
   nodeService?: PlatformNodeService;
   workerRunService?: PlatformWorkerRunService;
@@ -149,7 +149,7 @@ interface HandlePlatformRequestOptions {
   appDisplayName: string;
   accessMode: "open" | "protected";
   defaultWorkspacePath: string;
-  onStateMutation?: () => void;
+  onStateMutation?: () => void | Promise<void>;
   executionRuntimeStore?: PlatformExecutionRuntimeStore;
   nodeService: PlatformNodeService;
   workerRunService: PlatformWorkerRunService;
@@ -225,7 +225,7 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.nodeService.registerNode(payload);
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -238,7 +238,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.node?.nodeId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -272,7 +272,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -285,7 +285,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -298,7 +298,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -340,7 +340,7 @@ async function handlePlatformRequest(
         organization: result.organization,
         agent: result.agent,
       });
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -353,7 +353,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -363,7 +363,7 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.controlPlaneService.updateSpawnPolicy(payload);
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -376,7 +376,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -389,7 +389,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -402,7 +402,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -454,7 +454,7 @@ async function handlePlatformRequest(
         return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
       }
       if (result.item) {
-        recordStateMutation(options);
+        await recordStateMutation(options);
       }
       return writeJson(response, 200, result);
     }
@@ -468,7 +468,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Mailbox entry ${payload.mailboxEntryId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -481,7 +481,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Mailbox entry ${payload.mailboxEntryId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -518,7 +518,7 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.controlPlaneService.upsertProjectWorkspaceBinding(payload);
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -539,7 +539,7 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.workflowService.dispatchWorkItem(payload);
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -552,7 +552,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -565,7 +565,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -578,7 +578,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
       }
-      recordStateMutation(options);
+      await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -615,6 +615,10 @@ async function handlePlatformRequest(
         result = scheduled ?? options.workerRunService.pullAssignedRun(payload);
       }
 
+      if (didMutate) {
+        await recordStateMutation(options);
+      }
+
       if (result && options.executionRuntimeStore) {
         if (didMutate) {
           options.executionRuntimeStore.recordAssignedRun({
@@ -628,10 +632,6 @@ async function handlePlatformRequest(
           });
         }
       }
-
-      if (didMutate) {
-        recordStateMutation(options);
-      }
       return writeJson(response, 200, result ?? {});
     }
 
@@ -644,6 +644,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
       }
+      await recordStateMutation(options);
       const assignedRun = options.workerRunService.getAssignedRunByWorkItem({
         ownerPrincipalId: payload.ownerPrincipalId,
         workItemId: result.workItem.workItemId,
@@ -654,7 +655,6 @@ async function handlePlatformRequest(
           payload,
         });
       }
-      recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -667,6 +667,7 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
       }
+      await recordStateMutation(options);
       const assignedRun = options.workerRunService.getAssignedRunByWorkItem({
         ownerPrincipalId: payload.ownerPrincipalId,
         workItemId: result.workItem.workItemId,
@@ -677,7 +678,6 @@ async function handlePlatformRequest(
           completionResult: payload.result,
         });
       }
-      recordStateMutation(options);
       return writeJson(response, 200, result);
     }
 
@@ -803,8 +803,8 @@ function resolveWorkspacePathForQueuedWorkItem(
   return options.defaultWorkspacePath;
 }
 
-function recordStateMutation(options: HandlePlatformRequestOptions): void {
-  options.onStateMutation?.();
+async function recordStateMutation(options: HandlePlatformRequestOptions): Promise<void> {
+  await options.onStateMutation?.();
 }
 
 function buildNotFoundErrorResponse(message: string): { error: { code: "NOT_FOUND"; message: string } } {

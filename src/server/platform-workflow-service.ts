@@ -89,6 +89,7 @@ export interface PlatformWorkflowService {
 
 export interface SnapshotCapablePlatformWorkflowService extends PlatformWorkflowService {
   exportSnapshot(): PlatformWorkflowServiceSnapshot;
+  replaceSnapshot(snapshot: PlatformWorkflowServiceSnapshot): void;
 }
 
 export interface InMemoryPlatformWorkflowServiceOptions {
@@ -125,6 +126,22 @@ export function createInMemoryPlatformWorkflowService(
     mailboxContexts.set(seed.entry.mailboxEntryId, cloneMailboxSeed(seed));
   }
 
+  const replaceSnapshot = (snapshot: PlatformWorkflowServiceSnapshot) => {
+    workItemContexts.clear();
+    mailboxContexts.clear();
+    agentSeeds.splice(0, agentSeeds.length, ...snapshot.agentSeeds.map(cloneAgentSeed));
+    parentSeeds.splice(0, parentSeeds.length, ...snapshot.parentSeeds.map(cloneParentSeed));
+    handoffSeeds.splice(0, handoffSeeds.length, ...snapshot.handoffSeeds.map(cloneHandoffSeed));
+
+    for (const seed of snapshot.workItemSeeds) {
+      workItemContexts.set(seed.workItem.workItemId, cloneWorkItemContext(seed));
+    }
+
+    for (const seed of snapshot.mailboxSeeds) {
+      mailboxContexts.set(seed.entry.mailboxEntryId, cloneMailboxSeed(seed));
+    }
+  };
+
   return {
     exportSnapshot() {
       return {
@@ -135,6 +152,8 @@ export function createInMemoryPlatformWorkflowService(
         handoffSeeds: handoffSeeds.map(cloneHandoffSeed),
       };
     },
+
+    replaceSnapshot,
 
     listWorkItems(payload) {
       const items = listAllWorkItemContexts(payload.ownerPrincipalId)

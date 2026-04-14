@@ -1,6 +1,8 @@
 import { resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import { loadProjectEnv } from "../config/project-env.js";
+import { createPlatformControlPlaneRuntimeFromEnv, type PlatformControlPlaneDriver } from "./platform-control-plane-bootstrap.js";
+import { PlatformControlPlaneMirrorFlushError } from "./platform-control-plane-mirror.js";
 import { createInMemoryPlatformCollaborationService } from "./platform-collaboration-service.js";
 import { createInMemoryPlatformControlPlaneService } from "./platform-control-plane-service.js";
 import { createLocalPlatformExecutionRuntimeStore } from "./platform-execution-runtime-store.js";
@@ -9,6 +11,7 @@ import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformOncallService } from "./platform-oncall-service.js";
 import { createPlatformApp } from "./platform-app.js";
 import {
+  applyPlatformRuntimeSnapshot,
   exportPlatformRuntimeSnapshot,
   loadPlatformRuntimeSnapshotFile,
   savePlatformRuntimeSnapshotFile,
@@ -30,6 +33,11 @@ export interface PlatformMainConfig {
   port: number;
   serviceName: string;
   schedulerIntervalMs: number;
+  controlPlaneDriver: PlatformControlPlaneDriver;
+}
+
+export interface CreatePlatformServerFromEnvOptions {
+  createMySqlStore?: Parameters<typeof createPlatformControlPlaneRuntimeFromEnv>[0]["createMySqlStore"];
 }
 
 export function resolvePlatformMainConfig(env: NodeJS.ProcessEnv = process.env): PlatformMainConfig {
@@ -45,6 +53,7 @@ export function resolvePlatformMainConfig(env: NodeJS.ProcessEnv = process.env):
       env.THEMIS_PLATFORM_SCHEDULER_INTERVAL_MS,
       DEFAULT_PLATFORM_SCHEDULER_INTERVAL_MS,
     ),
+    controlPlaneDriver: resolvePlatformControlPlaneDriver(env),
   };
 }
 
@@ -90,40 +99,49 @@ export function resolveListenAddresses(host: string, port: number): string[] {
   return [...addresses];
 }
 
-export function createPlatformServerFromEnv(
+export async function createPlatformServerFromEnv(
   env: NodeJS.ProcessEnv = process.env,
   workingDirectory: string = process.cwd(),
+  options: CreatePlatformServerFromEnvOptions = {},
 ) {
   const config = resolvePlatformMainConfig(env);
   const runtimeSnapshotFile = resolvePlatformRuntimeSnapshotFile(workingDirectory, env);
   const executionRuntimeRoot = resolvePlatformExecutionRuntimeRoot(workingDirectory, env);
-  const runtimeSnapshot = loadPlatformRuntimeSnapshotFile(runtimeSnapshotFile);
+  const runtimeSnapshotFromFile = loadPlatformRuntimeSnapshotFile(runtimeSnapshotFile);
+  const controlPlaneRuntime = await createPlatformControlPlaneRuntimeFromEnv({
+    workingDirectory,
+    env,
+    runtimeSnapshotFallback: runtimeSnapshotFromFile,
+    createMySqlStore: options.createMySqlStore,
+  });
+  const initialSnapshot = controlPlaneRuntime.initialSnapshot ?? runtimeSnapshotFromFile;
+
   const nodeService = createInMemoryPlatformNodeService({
-    organizations: runtimeSnapshot?.nodeService.organizations,
-    nodes: runtimeSnapshot?.nodeService.nodes,
+    organizations: initialSnapshot?.nodeService.organizations,
+    nodes: initialSnapshot?.nodeService.nodes,
   });
   const workerRunService = createInMemoryPlatformWorkerRunService({
     nodeService,
-    assignedRuns: runtimeSnapshot?.workerRunService.assignedRuns,
+    assignedRuns: initialSnapshot?.workerRunService.assignedRuns,
   });
   const governanceService = createInMemoryPlatformGovernanceService({
     workerRunService,
   });
   const collaborationService = createInMemoryPlatformCollaborationService({
     workerRunService,
-    parentSeeds: runtimeSnapshot?.workflowService.parentSeeds,
-    handoffSeeds: runtimeSnapshot?.workflowService.handoffSeeds,
+    parentSeeds: initialSnapshot?.workflowService.parentSeeds,
+    handoffSeeds: initialSnapshot?.workflowService.handoffSeeds,
   });
   const workflowService = createInMemoryPlatformWorkflowService({
     workerRunService,
-    agentSeeds: runtimeSnapshot?.workflowService.agentSeeds,
-    workItemSeeds: runtimeSnapshot?.workflowService.workItemSeeds,
-    mailboxSeeds: runtimeSnapshot?.workflowService.mailboxSeeds,
-    parentSeeds: runtimeSnapshot?.workflowService.parentSeeds,
-    handoffSeeds: runtimeSnapshot?.workflowService.handoffSeeds,
+    agentSeeds: initialSnapshot?.workflowService.agentSeeds,
+    workItemSeeds: initialSnapshot?.workflowService.workItemSeeds,
+    mailboxSeeds: initialSnapshot?.workflowService.mailboxSeeds,
+    parentSeeds: initialSnapshot?.workflowService.parentSeeds,
+    handoffSeeds: initialSnapshot?.workflowService.handoffSeeds,
   });
   const controlPlaneService = createInMemoryPlatformControlPlaneService({
-    snapshot: runtimeSnapshot?.controlPlaneService,
+    snapshot: initialSnapshot?.controlPlaneService,
   });
   const oncallService = createInMemoryPlatformOncallService({
     nodeService,
@@ -139,19 +157,64 @@ export function createPlatformServerFromEnv(
     workerRunService,
     executionRuntimeStore,
   });
-  const persistRuntimeSnapshot = () => {
-    savePlatformRuntimeSnapshotFile(runtimeSnapshotFile, exportPlatformRuntimeSnapshot({
-      nodeService,
-      controlPlaneService,
-      workerRunService,
-      workflowService,
-    }));
+
+  const snapshotServices = {
+    nodeService,
+    controlPlaneService,
+    workerRunService,
+    workflowService,
   };
+  const restorableServices = {
+    ...snapshotServices,
+    collaborationService,
+  };
+
+  const exportCurrentSnapshot = () => exportPlatformRuntimeSnapshot(snapshotServices);
+  const saveCurrentRuntimeSnapshot = (snapshot = exportCurrentSnapshot()) => {
+    savePlatformRuntimeSnapshotFile(runtimeSnapshotFile, snapshot);
+  };
+  const restorePlatformState = (snapshot: Parameters<typeof applyPlatformRuntimeSnapshot>[1]) => {
+    applyPlatformRuntimeSnapshot(restorableServices, snapshot);
+    saveCurrentRuntimeSnapshot(snapshot);
+  };
+  let persistQueue = Promise.resolve();
+
+  const persistPlatformState = async () => {
+    const snapshot = exportCurrentSnapshot();
+    saveCurrentRuntimeSnapshot(snapshot);
+
+    if (!controlPlaneRuntime.mirror) {
+      return;
+    }
+
+    try {
+      await controlPlaneRuntime.mirror.flushSnapshot(snapshot);
+    } catch (error) {
+      if (error instanceof PlatformControlPlaneMirrorFlushError && error.restoredSnapshot) {
+        restorePlatformState(error.restoredSnapshot);
+      }
+
+      throw error;
+    }
+  };
+
+  const enqueuePersistPlatformState = () => {
+    const pending = persistQueue.then(async () => {
+      await persistPlatformState();
+    });
+    persistQueue = pending.catch(() => {});
+    return pending;
+  };
+
+  if (initialSnapshot) {
+    saveCurrentRuntimeSnapshot(initialSnapshot);
+  }
+
   const server = createPlatformApp({
     serviceName: config.serviceName,
     appDisplayName: "Themis Platform",
     accessMode: "protected",
-    onStateMutation: persistRuntimeSnapshot,
+    onStateMutation: enqueuePersistPlatformState,
     executionRuntimeStore,
     nodeService,
     workerRunService,
@@ -166,17 +229,27 @@ export function createPlatformServerFromEnv(
     }),
   });
 
+  server.on("close", () => {
+    void controlPlaneRuntime.mirror?.close();
+  });
+
   return {
     config,
     server,
     schedulerService,
     runtimeSnapshotFile,
     executionRuntimeRoot,
-    persistRuntimeSnapshot,
+    localSharedCacheFile: controlPlaneRuntime.localSharedCacheFile,
+    mirrorBootstrapResult: controlPlaneRuntime.bootstrapResult,
+    persistPlatformState: enqueuePersistPlatformState,
   };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  void startPlatformMain();
+}
+
+async function startPlatformMain(): Promise<void> {
   loadProjectEnv();
   const {
     config,
@@ -184,14 +257,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     schedulerService,
     runtimeSnapshotFile,
     executionRuntimeRoot,
-    persistRuntimeSnapshot,
-  } = createPlatformServerFromEnv(
+    localSharedCacheFile,
+    mirrorBootstrapResult,
+    persistPlatformState,
+  } = await createPlatformServerFromEnv(
     process.env,
     process.cwd(),
   );
   let schedulerTickRunning = false;
 
-  const runSchedulerTick = () => {
+  const runSchedulerTick = async () => {
     if (schedulerTickRunning) {
       return;
     }
@@ -202,7 +277,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       const tick = schedulerService.runTick();
 
       if (tick.reclaimedRunCount > 0) {
-        persistRuntimeSnapshot();
+        await persistPlatformState();
         console.warn(
           `[themis/platform] Scheduler reclaimed ${tick.reclaimedRunCount} runs,`
           + ` requeued ${tick.requeuedWorkItemCount} work-items.`,
@@ -217,13 +292,25 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   };
 
   if (config.schedulerIntervalMs > 0) {
-    const timer = setInterval(runSchedulerTick, config.schedulerIntervalMs);
+    const timer = setInterval(() => {
+      void runSchedulerTick();
+    }, config.schedulerIntervalMs);
     timer.unref?.();
-    runSchedulerTick();
+    void runSchedulerTick();
   }
 
   server.listen(config.port, config.host, () => {
     console.log(`[themis/platform] ${bootstrapMessage(config)}`);
+    console.log(`[themis/platform] Control plane driver ${config.controlPlaneDriver}`);
+
+    if (localSharedCacheFile) {
+      console.log(`[themis/platform] Shared cache ${localSharedCacheFile}`);
+    }
+
+    if (mirrorBootstrapResult) {
+      console.log(`[themis/platform] Mirror bootstrap source ${mirrorBootstrapResult.source}`);
+    }
+
     console.log(
       `[themis/platform] Scheduler interval ${Math.max(1, Math.round(config.schedulerIntervalMs / 1000))}s`,
     );
@@ -234,6 +321,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log(`[themis/platform] Open ${address}`);
     }
   });
+}
+
+function resolvePlatformControlPlaneDriver(env: NodeJS.ProcessEnv = process.env): PlatformControlPlaneDriver {
+  const configured = env.THEMIS_PLATFORM_CONTROL_PLANE_DRIVER?.trim().toLowerCase();
+
+  if (!configured || configured === "sqlite") {
+    return "sqlite";
+  }
+
+  if (configured === "mysql") {
+    return "mysql";
+  }
+
+  throw new Error(
+    `Unsupported THEMIS_PLATFORM_CONTROL_PLANE_DRIVER: ${configured}. Expected sqlite or mysql.`,
+  );
 }
 
 function normalizePort(value: string | undefined, fallback: number): number {

@@ -1,6 +1,9 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
+  PlatformCollaborationService,
+} from "./platform-collaboration-service.js";
+import type {
   SnapshotCapablePlatformControlPlaneService,
   PlatformControlPlaneServiceSnapshot,
 } from "./platform-control-plane-service.js";
@@ -33,6 +36,10 @@ export interface PlatformRuntimeSnapshotServices {
   workflowService: SnapshotCapablePlatformWorkflowService;
 }
 
+export interface RestorablePlatformRuntimeSnapshotServices extends PlatformRuntimeSnapshotServices {
+  collaborationService: PlatformCollaborationService;
+}
+
 export function exportPlatformRuntimeSnapshot(
   services: PlatformRuntimeSnapshotServices,
   now: () => string = () => new Date().toISOString(),
@@ -45,6 +52,62 @@ export function exportPlatformRuntimeSnapshot(
     workerRunService: services.workerRunService.exportSnapshot(),
     workflowService: services.workflowService.exportSnapshot(),
   };
+}
+
+export function applyPlatformRuntimeSnapshot(
+  services: RestorablePlatformRuntimeSnapshotServices,
+  snapshot: PlatformRuntimeSnapshot,
+): void {
+  services.nodeService.replaceSnapshot(snapshot.nodeService);
+  services.controlPlaneService.replaceSnapshot(snapshot.controlPlaneService);
+  services.workerRunService.replaceSnapshot(snapshot.workerRunService);
+  services.workflowService.replaceSnapshot(snapshot.workflowService);
+  services.collaborationService.replaceSeeds({
+    parentSeeds: snapshot.workflowService.parentSeeds,
+    handoffSeeds: snapshot.workflowService.handoffSeeds,
+  });
+}
+
+export function createEmptyPlatformRuntimeSnapshot(
+  now: () => string = () => new Date().toISOString(),
+): PlatformRuntimeSnapshot {
+  return {
+    version: 1,
+    savedAt: now(),
+    nodeService: {
+      organizations: [],
+      nodes: [],
+    },
+    controlPlaneService: {
+      owners: [],
+    },
+    workerRunService: {
+      assignedRuns: [],
+    },
+    workflowService: {
+      agentSeeds: [],
+      workItemSeeds: [],
+      mailboxSeeds: [],
+      parentSeeds: [],
+      handoffSeeds: [],
+    },
+  };
+}
+
+export function hasPlatformRuntimeSnapshotData(snapshot: PlatformRuntimeSnapshot | null | undefined): boolean {
+  if (!snapshot || snapshot.version !== 1) {
+    return false;
+  }
+
+  return snapshot.nodeService.organizations.length > 0
+    || snapshot.nodeService.nodes.length > 0
+    || snapshot.controlPlaneService.owners.length > 0
+    || snapshot.workerRunService.assignedRuns.length > 0
+    || snapshot.workflowService.agentSeeds.length > 0
+    || snapshot.workflowService.workItemSeeds.length > 0
+    || snapshot.workflowService.mailboxSeeds.length > 0
+    || snapshot.workflowService.parentSeeds.length > 0
+    || snapshot.workflowService.handoffSeeds.length > 0;
 }
 
 export function loadPlatformRuntimeSnapshotFile(filePath: string): PlatformRuntimeSnapshot | null {

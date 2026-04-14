@@ -16,6 +16,7 @@
     "start:platform": "node dist/server/platform-main.js"
   },
   "dependencies": {
+    "mysql2": "^3.15.3",
     "themis-contracts": "file:../themis-contracts"
   },
   "devDependencies": {

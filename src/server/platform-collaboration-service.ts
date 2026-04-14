@@ -40,6 +40,10 @@ export interface PlatformCollaborationService {
     payload: ManagedAgentPlatformCollaborationDashboardPayload,
   ): ManagedAgentPlatformCollaborationDashboardResult;
   getAgentHandoffList(payload: ManagedAgentPlatformHandoffListPayload): ManagedAgentPlatformHandoffListResult | null;
+  replaceSeeds(input: {
+    parentSeeds: PlatformCollaborationParentSeed[];
+    handoffSeeds: PlatformAgentHandoffSeed[];
+  }): void;
 }
 
 export interface InMemoryPlatformCollaborationServiceOptions {
@@ -61,6 +65,11 @@ export function createInMemoryPlatformCollaborationService(
   const handoffSeeds = Array.isArray(options.handoffSeeds) ? options.handoffSeeds.map(cloneHandoffSeed) : [];
 
   return {
+    replaceSeeds(input) {
+      parentSeeds.splice(0, parentSeeds.length, ...input.parentSeeds.map(cloneParentSeed));
+      handoffSeeds.splice(0, handoffSeeds.length, ...input.handoffSeeds.map(cloneHandoffSeed));
+    },
+
     getCollaborationDashboard(payload) {
       const contexts = selectWaitingContexts(options.workerRunService, payload, now, staleThresholdHours);
       const parents = buildParentGroups(contexts, parentSeeds, payload);

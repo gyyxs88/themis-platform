@@ -56,6 +56,7 @@ export interface PlatformWorkerRunServiceSnapshot {
 
 export interface SnapshotCapablePlatformWorkerRunService extends PlatformWorkerRunService {
   exportSnapshot(): PlatformWorkerRunServiceSnapshot;
+  replaceSnapshot(snapshot: PlatformWorkerRunServiceSnapshot): void;
 }
 
 export interface InMemoryPlatformWorkerRunServiceOptions {
@@ -80,12 +81,22 @@ export function createInMemoryPlatformWorkerRunService(
     assignedRuns.set(assignedRun.run.runId, cloneAssignedRun(assignedRun));
   }
 
+  const replaceSnapshot = (snapshot: PlatformWorkerRunServiceSnapshot) => {
+    assignedRuns.clear();
+
+    for (const assignedRun of snapshot.assignedRuns) {
+      assignedRuns.set(assignedRun.run.runId, cloneAssignedRun(assignedRun));
+    }
+  };
+
   return {
     exportSnapshot() {
       return {
         assignedRuns: Array.from(assignedRuns.values()).map((assignedRun) => cloneAssignedRun(assignedRun)),
       };
     },
+
+    replaceSnapshot,
 
     listOwnerPrincipalIds() {
       return Array.from(

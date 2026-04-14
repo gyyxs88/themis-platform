@@ -33,6 +33,7 @@ export interface PlatformNodeServiceSnapshot {
 
 export interface SnapshotCapablePlatformNodeService extends PlatformNodeService {
   exportSnapshot(): PlatformNodeServiceSnapshot;
+  replaceSnapshot(snapshot: PlatformNodeServiceSnapshot): void;
 }
 
 export interface InMemoryPlatformNodeServiceOptions {
@@ -62,6 +63,23 @@ export function createInMemoryPlatformNodeService(
     });
   }
 
+  const replaceSnapshot = (snapshot: PlatformNodeServiceSnapshot) => {
+    organizations.clear();
+    nodes.clear();
+
+    for (const organization of snapshot.organizations) {
+      organizations.set(organization.organizationId, {
+        ...organization,
+      });
+    }
+
+    for (const node of snapshot.nodes) {
+      nodes.set(node.nodeId, {
+        ...node,
+      });
+    }
+  };
+
   return {
     exportSnapshot() {
       return {
@@ -69,6 +87,8 @@ export function createInMemoryPlatformNodeService(
         nodes: Array.from(nodes.values()).map((node) => ({ ...node })),
       };
     },
+
+    replaceSnapshot,
 
     registerNode(payload) {
       const timestamp = now();
