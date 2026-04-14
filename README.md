@@ -5,6 +5,7 @@
 负责平台控制面、平台页面、节点/租约/调度/值班治理。
 
 - 当前入口：`src/server/platform-main.ts`
+- 独立 CLI：仓库根目录 `./themis-platform`
 - 当前状态：已落入最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 最小 agents 控制面、`projects/workspace-binding/list|detail|upsert` 最小 projects 控制面、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 最小治理读面、`oncall/summary` 值班建议读面、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`worker/runs/pull|update|complete` 最小执行链路，以及独立 `themis-platform` CLI 的 `auth platform / doctor worker-fleet / worker-fleet` 首版实现，并开始通过 `file:../themis-contracts` 依赖消费共享 access / worker / agents / collaboration / projects / work-items / oncall 契约
 - 迁移依据：请对照 `themis` 主仓里的 `docs/repository/themis-three-layer-split-migration-checklist.md`
 
@@ -27,6 +28,17 @@
 - `./themis-platform doctor worker-fleet` 提供 Worker Fleet 巡检摘要
 - `./themis-platform worker-fleet <drain|offline|reclaim>` 提供最小节点治理 CLI
 - 其余 `/api/*` 统一返回共享 `PLATFORM_ROUTE_NOT_FOUND`
+
+## 部署前提
+
+- 当前仓仍通过 `file:../themis-contracts` 依赖共享契约；真实部署时需要把 `themis-contracts` 作为 sibling repo 放到同一级目录，再执行 `npm ci`。
+- 平台常驻建议直接使用根目录 `./themis-platform` 或 `npm run start:platform`，不要再借主仓 `./themis` 的兼容入口。
+- 平台机本地运行态会写入 `infra/local/` 与 `infra/platform/`，这两个目录已经加入 `.gitignore`，不应纳入版本控制。
+
+## 部署文档
+
+- `docs/themis-platform-systemd-service.md`
+- `infra/systemd/themis-platform.service.example`
 
 当前验证：
 
