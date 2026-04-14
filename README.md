@@ -55,5 +55,6 @@
 - 当前治理页已覆盖最小 `agents + projects + governance-overview + waiting/list + collaboration-dashboard + handoffs/list + oncall/summary + work-items + mailbox + recent runs`。
 - 当前 `platform-main` 已具备真实部署入口和最小 `Web Access + Bearer` 鉴权语义，但平台事实仍是 in-memory；后续还需继续迁入 MySQL shared control plane 与 scheduler/runtime 主链，才能替换现网平台服务。
 - 当前 scheduler/runtime 主链已补入第一刀：`worker pull` 会根据节点所属组织挑选最高优先级 `queued work-item`，并优先使用 `projects/workspace-binding` 里的 `lastActiveWorkspacePath / canonicalWorkspacePath` 生成执行合同；但平台事实仍是 in-memory，尚未接入现网 MySQL shared control plane。
+- 当前 scheduler/runtime 主链已补入第二刀：`platform-main` 现在会按 `THEMIS_PLATFORM_SCHEDULER_INTERVAL_MS` 定期运行 `scheduler tick`，自动回收 `offline / draining` 节点上的 active lease，并把对应 work-item 重新排回 `queued`，供后续在线节点重新拉取；当前剩余主阻塞已收敛到 MySQL shared control plane 与 runtime 持久化。
 
 下一步应优先把本地 token 存储与平台服务端鉴权事实继续收口到同一控制面，再逐步把当前 in-memory 平台事实换成真实持久化控制面。

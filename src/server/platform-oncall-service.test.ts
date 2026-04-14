@@ -107,6 +107,9 @@ test("PlatformOncallService 会汇总节点、waiting、runs 与 paused agents �
     },
   };
   const workerRunService: PlatformWorkerRunService = {
+    listOwnerPrincipalIds() {
+      return ["principal-owner"];
+    },
     pullAssignedRun() {
       throw new Error("not implemented");
     },

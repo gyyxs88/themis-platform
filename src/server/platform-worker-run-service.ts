@@ -19,6 +19,7 @@ import type {
 import type { PlatformNodeService } from "./platform-node-service.js";
 
 export interface PlatformWorkerRunService {
+  listOwnerPrincipalIds(): string[];
   pullAssignedRun(payload: ManagedAgentPlatformWorkerPullPayload): ManagedAgentPlatformWorkerAssignedRunResult | null;
   assignQueuedWorkItem(input: {
     ownerPrincipalId: string;
@@ -72,6 +73,14 @@ export function createInMemoryPlatformWorkerRunService(
   }
 
   return {
+    listOwnerPrincipalIds() {
+      return Array.from(
+        new Set(
+          Array.from(assignedRuns.values()).map((assignedRun) => assignedRun.organization.ownerPrincipalId),
+        ),
+      ).sort((left, right) => left.localeCompare(right, "en"));
+    },
+
     pullAssignedRun(payload) {
       const candidate = Array.from(assignedRuns.values()).find((assignedRun) => (
         assignedRun.node.nodeId === payload.nodeId
@@ -102,7 +111,7 @@ export function createInMemoryPlatformWorkerRunService(
     assignQueuedWorkItem(input) {
       const existing = findAssignedRunByWorkItem(assignedRuns, input.ownerPrincipalId, input.workItem.workItemId);
 
-      if (existing) {
+      if (existing && existing.executionLease.status === "active") {
         return cloneAssignedRun(existing);
       }
 
@@ -347,16 +356,14 @@ function findAssignedRunByWorkItem(
   ownerPrincipalId: string,
   workItemId: string,
 ): ManagedAgentPlatformWorkerAssignedRunResult | null {
-  for (const assignedRun of assignedRuns.values()) {
-    if (
+  const matches = Array.from(assignedRuns.values())
+    .filter((assignedRun) => (
       assignedRun.organization.ownerPrincipalId === ownerPrincipalId
       && assignedRun.workItem.workItemId === workItemId
-    ) {
-      return assignedRun;
-    }
-  }
+    ))
+    .sort(compareAssignedRunsForSameWorkItem);
 
-  return null;
+  return matches[0] ?? null;
 }
 
 function buildRunMutationResult(
@@ -370,6 +377,25 @@ function buildRunMutationResult(
     run: assignedRun.run,
     executionLease: assignedRun.executionLease,
   };
+}
+
+function compareAssignedRunsForSameWorkItem(
+  left: ManagedAgentPlatformWorkerAssignedRunResult,
+  right: ManagedAgentPlatformWorkerAssignedRunResult,
+) {
+  const leaseDelta = resolveExecutionLeaseScore(right.executionLease.status) - resolveExecutionLeaseScore(left.executionLease.status);
+
+  if (leaseDelta !== 0) {
+    return leaseDelta;
+  }
+
+  const runDelta = resolveRunStatusScore(right.run.status) - resolveRunStatusScore(left.run.status);
+
+  if (runDelta !== 0) {
+    return runDelta;
+  }
+
+  return compareAssignedRuns(right, left);
 }
 
 function mapWorkerRunStatus(
@@ -430,6 +456,43 @@ function normalizeRequiredText(value: string | null | undefined, message: string
   }
 
   return normalized;
+}
+
+function resolveExecutionLeaseScore(status: ManagedAgentPlatformWorkerAssignedRunResult["executionLease"]["status"]) {
+  switch (status) {
+    case "active":
+      return 4;
+    case "expired":
+      return 3;
+    case "released":
+      return 2;
+    case "revoked":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function resolveRunStatusScore(status: ManagedAgentPlatformWorkerAssignedRunResult["run"]["status"]) {
+  switch (status) {
+    case "running":
+      return 6;
+    case "starting":
+      return 5;
+    case "created":
+      return 4;
+    case "waiting_action":
+      return 3;
+    case "interrupted":
+      return 2;
+    case "failed":
+      return 1;
+    case "completed":
+    case "cancelled":
+      return 0;
+    default:
+      return 0;
+  }
 }
 
 function normalizeTimestamp(value: string | undefined, fallbackNow: () => string): string {
