@@ -1,6 +1,7 @@
 import { networkInterfaces } from "node:os";
 import { loadProjectEnv } from "../config/project-env.js";
 import { createPlatformApp } from "./platform-app.js";
+import { createPlatformWebAccessService } from "./platform-web-access.js";
 
 const DEFAULT_PLATFORM_HOST = "0.0.0.0";
 const DEFAULT_PLATFORM_PORT = 3100;
@@ -54,6 +55,12 @@ export function createPlatformServerFromEnv(env: NodeJS.ProcessEnv = process.env
   const config = resolvePlatformMainConfig(env);
   const server = createPlatformApp({
     serviceName: config.serviceName,
+    appDisplayName: "Themis Platform",
+    accessMode: "protected",
+    authService: createPlatformWebAccessService({
+      webLoginSecret: env.THEMIS_PLATFORM_WEB_ACCESS_TOKEN,
+      webLoginTokenLabel: env.THEMIS_PLATFORM_WEB_ACCESS_TOKEN_LABEL,
+    }),
   });
 
   return {

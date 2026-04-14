@@ -7,6 +7,7 @@
 - 当前入口：`src/server/platform-main.ts`
 - 独立 CLI：仓库根目录 `./themis-platform`
 - 当前状态：已落入最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 最小 agents 控制面、`projects/workspace-binding/list|detail|upsert` 最小 projects 控制面、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 最小治理读面、`oncall/summary` 值班建议读面、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`worker/runs/pull|update|complete` 最小执行链路，以及独立 `themis-platform` CLI 的 `auth platform / doctor worker-fleet / worker-fleet` 首版实现，并开始通过 `file:../themis-contracts` 依赖消费共享 access / worker / agents / collaboration / projects / work-items / oncall 契约
+- 当前状态：已落入最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 最小 agents 控制面、`projects/workspace-binding/list|detail|upsert` 最小 projects 控制面、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 最小治理读面、`oncall/summary` 值班建议读面、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`worker/runs/pull|update|complete` 最小执行链路、最小 `Web Access + Platform Service Bearer` 鉴权链，以及独立 `themis-platform` CLI 的 `auth platform / doctor worker-fleet / worker-fleet` 首版实现，并开始通过 `file:../themis-contracts` 依赖消费共享 access / worker / agents / collaboration / projects / work-items / oncall 契约
 - 迁移依据：请对照 `themis` 主仓里的 `docs/repository/themis-three-layer-split-migration-checklist.md`
 
 当前最小能力：
@@ -14,7 +15,7 @@
 - `GET /` 返回独立平台前端壳
 - `GET /platform.js` 与 `GET /platform.css` 返回平台静态资源
 - `GET /api/health` 返回 `themis-platform` 服务状态
-- `GET /api/web-auth/status` 返回当前平台 Web 登录状态
+- `GET /login`、`POST /api/web-auth/login|logout`、`GET /api/web-auth/status` 提供最小平台 Web 登录态
 - `POST /api/platform/nodes/register|heartbeat|list|detail|drain|offline|reclaim` 提供最小节点控制面 API
 - `POST /api/platform/agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 提供最小 agents 控制面 API
 - `POST /api/platform/projects/workspace-binding/list|detail|upsert` 提供最小项目工作区绑定 API
@@ -33,6 +34,7 @@
 
 - 当前仓仍通过 `file:../themis-contracts` 依赖共享契约；真实部署时需要把 `themis-contracts` 作为 sibling repo 放到同一级目录，再执行 `npm ci`。
 - `src/server/platform-main.ts` 现在会先读取仓库根目录 `.env/.env.local`，并按 `THEMIS_HOST` / `THEMIS_PORT` 启动；默认监听已改成 `0.0.0.0:3100`，不再固定写死 `127.0.0.1:3200`。
+- 平台 Web 登录口令当前通过环境变量 `THEMIS_PLATFORM_WEB_ACCESS_TOKEN`（可选 `THEMIS_PLATFORM_WEB_ACCESS_TOKEN_LABEL`）提供；平台服务 Bearer token 仍由 `infra/local/platform-service-tokens.json` 承载。
 - 平台常驻建议直接使用根目录 `./themis-platform` 或 `npm run start:platform`，不要再借主仓 `./themis` 的兼容入口。
 - 平台机本地运行态会写入 `infra/local/` 与 `infra/platform/`，这两个目录已经加入 `.gitignore`，不应纳入版本控制。
 
@@ -52,6 +54,6 @@
 - `auth platform` 首版当前使用本地 `infra/local/platform-service-tokens.json` 保存平台服务令牌元数据，后续再和平台持久化控制面打通。
 - `doctor worker-fleet` 与 `worker-fleet` 已迁入独立平台仓，但当前仍只覆盖最小节点值班与治理闭环。
 - 当前治理页已覆盖最小 `agents + projects + governance-overview + waiting/list + collaboration-dashboard + handoffs/list + oncall/summary + work-items + mailbox + recent runs`。
-- 当前 `platform-main` 已具备真实部署入口的基础启动语义，但平台事实仍是 in-memory；后续还需继续迁入 Web Access/Bearer、MySQL shared control plane 与 scheduler/runtime 主链，才能替换现网平台服务。
+- 当前 `platform-main` 已具备真实部署入口和最小 `Web Access + Bearer` 鉴权语义，但平台事实仍是 in-memory；后续还需继续迁入 MySQL shared control plane 与 scheduler/runtime 主链，才能替换现网平台服务。
 
 下一步应优先把本地 token 存储与平台服务端鉴权事实继续收口到同一控制面，再逐步把当前 in-memory 平台事实换成真实持久化控制面。

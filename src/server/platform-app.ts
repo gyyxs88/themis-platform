@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { buildPlatformRouteNotFoundErrorResponse } from "themis-contracts/managed-agent-platform-access";
+import {
+  buildPlatformRouteNotFoundErrorResponse,
+} from "themis-contracts/managed-agent-platform-access";
 import type {
   ManagedAgentPlatformNodeDetailPayload,
   ManagedAgentPlatformNodeHeartbeatPayload,
@@ -57,9 +59,19 @@ import { createInMemoryPlatformNodeService, type PlatformNodeService } from "./p
 import { createInMemoryPlatformOncallService, type PlatformOncallService } from "./platform-oncall-service.js";
 import { createInMemoryPlatformWorkerRunService, type PlatformWorkerRunService } from "./platform-worker-run-service.js";
 import { createInMemoryPlatformWorkflowService, type PlatformWorkflowService } from "./platform-workflow-service.js";
+import {
+  buildPlatformServiceOwnerMismatchBody,
+  createPlatformWebAccessService,
+  getPlatformServiceAuthContext,
+  maybeHandlePlatformWebAccessRoute,
+  PlatformWebAccessService,
+  requirePlatformWebAccess,
+} from "./platform-web-access.js";
 
 export interface PlatformAppOptions {
   serviceName?: string;
+  appDisplayName?: string;
+  accessMode?: "open" | "protected";
   nodeService?: PlatformNodeService;
   workerRunService?: PlatformWorkerRunService;
   governanceService?: PlatformGovernanceService;
@@ -68,10 +80,13 @@ export interface PlatformAppOptions {
   controlPlaneService?: PlatformControlPlaneService;
   oncallService?: PlatformOncallService;
   webAuthTokenLabel?: string;
+  authService?: PlatformWebAccessService;
 }
 
 export function createPlatformApp(options: PlatformAppOptions = {}): Server {
   const serviceName = options.serviceName ?? "themis-platform";
+  const appDisplayName = options.appDisplayName ?? "Themis Platform";
+  const accessMode = options.accessMode ?? "open";
   const nodeService = options.nodeService ?? createInMemoryPlatformNodeService();
   const workerRunService = options.workerRunService ?? createInMemoryPlatformWorkerRunService({
     nodeService,
@@ -93,10 +108,17 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
     controlPlaneService,
   });
   const webAuthTokenLabel = options.webAuthTokenLabel ?? "";
+  const authService = options.authService ?? (accessMode === "protected"
+    ? createPlatformWebAccessService({
+      webLoginTokenLabel: webAuthTokenLabel,
+    })
+    : null);
 
   return createServer((request, response) => {
     void handlePlatformRequest(request, response, {
       serviceName,
+      appDisplayName,
+      accessMode,
       nodeService,
       workerRunService,
       governanceService,
@@ -105,12 +127,15 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       controlPlaneService,
       oncallService,
       webAuthTokenLabel,
+      authService,
     });
   });
 }
 
 interface HandlePlatformRequestOptions {
   serviceName: string;
+  appDisplayName: string;
+  accessMode: "open" | "protected";
   nodeService: PlatformNodeService;
   workerRunService: PlatformWorkerRunService;
   governanceService: PlatformGovernanceService;
@@ -119,6 +144,7 @@ interface HandlePlatformRequestOptions {
   controlPlaneService: PlatformControlPlaneService;
   oncallService: PlatformOncallService;
   webAuthTokenLabel: string;
+  authService: PlatformWebAccessService | null;
 }
 
 async function handlePlatformRequest(
@@ -130,17 +156,37 @@ async function handlePlatformRequest(
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
 
   try {
-    const staticAsset = readPlatformAsset(url.pathname);
-
-    if (method === "GET" && staticAsset) {
-      return writeText(response, 200, staticAsset.contentType, staticAsset.body);
-    }
-
     if (method === "GET" && url.pathname === "/api/health") {
       return writeJson(response, 200, {
         ok: true,
         service: options.serviceName,
       });
+    }
+
+    if (options.authService) {
+      if (await maybeHandlePlatformWebAccessRoute(request, response, options.authService, {
+        appDisplayName: options.appDisplayName,
+      })) {
+        return;
+      }
+    }
+
+    if (options.accessMode === "protected") {
+      if (!options.authService) {
+        return writeJson(response, 500, buildBadRequestErrorResponse("平台鉴权服务未初始化。"));
+      }
+
+      if (!requirePlatformWebAccess(request, response, options.authService, {
+        appDisplayName: options.appDisplayName,
+      })) {
+        return;
+      }
+    }
+
+    const staticAsset = readPlatformAsset(url.pathname);
+
+    if (method === "GET" && staticAsset) {
+      return writeText(response, 200, staticAsset.contentType, staticAsset.body);
     }
 
     if (method === "GET" && url.pathname === "/api/web-auth/status") {
@@ -151,17 +197,26 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/oncall/summary") {
-      const payload = await readJsonBody<ManagedAgentPlatformOncallSummaryPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformOncallSummaryPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.oncallService.getOncallSummary(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/register") {
-      const payload = await readJsonBody<ManagedAgentPlatformNodeRegisterPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformNodeRegisterPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.nodeService.registerNode(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/heartbeat") {
-      const payload = await readJsonBody<ManagedAgentPlatformNodeHeartbeatPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformNodeHeartbeatPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.nodeService.heartbeatNode(payload);
       return result
         ? writeJson(response, 200, result)
@@ -169,14 +224,20 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/list") {
-      const payload = await readJsonBody<ManagedAgentPlatformNodeListPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformNodeListPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, {
         nodes: options.nodeService.listNodes(payload),
       });
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/detail") {
-      const payload = await readJsonBody<ManagedAgentPlatformNodeDetailPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformNodeDetailPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.nodeService.getNodeDetail(payload);
       return result
         ? writeJson(response, 200, result)
@@ -184,7 +245,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/drain") {
-      const payload = await readJsonBody<ManagedAgentPlatformNodeDetailPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformNodeDetailPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.nodeService.drainNode(payload);
       return result
         ? writeJson(response, 200, result)
@@ -192,7 +256,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/offline") {
-      const payload = await readJsonBody<ManagedAgentPlatformNodeDetailPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformNodeDetailPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.nodeService.offlineNode(payload);
       return result
         ? writeJson(response, 200, result)
@@ -200,7 +267,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/reclaim") {
-      const payload = await readJsonBody<ManagedAgentPlatformNodeReclaimPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformNodeReclaimPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.nodeService.reclaimNode(payload);
       return result
         ? writeJson(response, 200, result)
@@ -208,17 +278,26 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/governance-overview") {
-      const payload = await readJsonBody<ManagedAgentPlatformGovernanceFiltersPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformGovernanceFiltersPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.governanceService.getGovernanceOverview(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/list") {
-      const payload = await readJsonBody<{ ownerPrincipalId: string }>(request);
+      const payload = await readAuthorizedPayload<{ ownerPrincipalId: string }>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.controlPlaneService.listAgents(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/detail") {
-      const payload = await readJsonBody<ManagedAgentPlatformAgentDetailPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformAgentDetailPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.controlPlaneService.getAgentDetail(payload);
       return result
         ? writeJson(response, 200, result)
@@ -226,12 +305,18 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/create") {
-      const payload = await readJsonBody<ManagedAgentPlatformAgentCreatePayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformAgentCreatePayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.controlPlaneService.createAgent(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/execution-boundary/update") {
-      const payload = await readJsonBody<ManagedAgentPlatformAgentExecutionBoundaryUpdatePayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformAgentExecutionBoundaryUpdatePayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.controlPlaneService.updateExecutionBoundary(payload);
       return result
         ? writeJson(response, 200, result)
@@ -239,12 +324,18 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/spawn-policy/update") {
-      const payload = await readJsonBody<ManagedAgentPlatformAgentSpawnPolicyUpdatePayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformAgentSpawnPolicyUpdatePayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.controlPlaneService.updateSpawnPolicy(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/pause") {
-      const payload = await readJsonBody<ManagedAgentPlatformAgentLifecyclePayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformAgentLifecyclePayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.controlPlaneService.pauseAgent(payload);
       return result
         ? writeJson(response, 200, result)
@@ -252,7 +343,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/resume") {
-      const payload = await readJsonBody<ManagedAgentPlatformAgentLifecyclePayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformAgentLifecyclePayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.controlPlaneService.resumeAgent(payload);
       return result
         ? writeJson(response, 200, result)
@@ -260,7 +354,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/archive") {
-      const payload = await readJsonBody<ManagedAgentPlatformAgentLifecyclePayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformAgentLifecyclePayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.controlPlaneService.archiveAgent(payload);
       return result
         ? writeJson(response, 200, result)
@@ -268,17 +365,26 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/waiting/list") {
-      const payload = await readJsonBody<ManagedAgentPlatformWaitingQueueListPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWaitingQueueListPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.governanceService.listWaitingQueue(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/collaboration-dashboard") {
-      const payload = await readJsonBody<ManagedAgentPlatformCollaborationDashboardPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformCollaborationDashboardPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.collaborationService.getCollaborationDashboard(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/handoffs/list") {
-      const payload = await readJsonBody<ManagedAgentPlatformHandoffListPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformHandoffListPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.collaborationService.getAgentHandoffList(payload);
       return result
         ? writeJson(response, 200, result)
@@ -286,7 +392,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/mailbox/list") {
-      const payload = await readJsonBody<ManagedAgentPlatformMailboxListPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMailboxListPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workflowService.listMailbox(payload);
       return result
         ? writeJson(response, 200, result)
@@ -294,7 +403,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/mailbox/pull") {
-      const payload = await readJsonBody<ManagedAgentPlatformMailboxPullPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMailboxPullPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workflowService.pullMailbox(payload);
       return result
         ? writeJson(response, 200, result)
@@ -302,7 +414,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/mailbox/ack") {
-      const payload = await readJsonBody<ManagedAgentPlatformMailboxAckPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMailboxAckPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workflowService.ackMailbox(payload);
       return result
         ? writeJson(response, 200, result)
@@ -310,7 +425,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/mailbox/respond") {
-      const payload = await readJsonBody<ManagedAgentPlatformMailboxRespondPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMailboxRespondPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workflowService.respondMailbox(payload);
       return result
         ? writeJson(response, 200, result)
@@ -318,17 +436,26 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/list") {
-      const payload = await readJsonBody<ManagedAgentPlatformWorkItemListPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkItemListPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.workflowService.listWorkItems(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/projects/workspace-binding/list") {
-      const payload = await readJsonBody<ManagedAgentPlatformProjectWorkspaceBindingListPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformProjectWorkspaceBindingListPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.controlPlaneService.listProjectWorkspaceBindings(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/projects/workspace-binding/detail") {
-      const payload = await readJsonBody<ManagedAgentPlatformProjectWorkspaceBindingDetailPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformProjectWorkspaceBindingDetailPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.controlPlaneService.getProjectWorkspaceBinding(payload);
       return result
         ? writeJson(response, 200, result)
@@ -336,12 +463,18 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/projects/workspace-binding/upsert") {
-      const payload = await readJsonBody<ManagedAgentPlatformProjectWorkspaceBindingUpsertPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformProjectWorkspaceBindingUpsertPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.controlPlaneService.upsertProjectWorkspaceBinding(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/detail") {
-      const payload = await readJsonBody<ManagedAgentPlatformWorkItemDetailPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkItemDetailPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workflowService.getWorkItemDetail(payload);
       return result
         ? writeJson(response, 200, result)
@@ -349,12 +482,18 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/dispatch") {
-      const payload = await readJsonBody<ManagedAgentPlatformWorkItemDispatchPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkItemDispatchPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.workflowService.dispatchWorkItem(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/cancel") {
-      const payload = await readJsonBody<ManagedAgentPlatformWorkItemCancelPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkItemCancelPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workflowService.cancelWorkItem(payload);
       return result
         ? writeJson(response, 200, result)
@@ -362,7 +501,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/respond") {
-      const payload = await readJsonBody<ManagedAgentPlatformWorkItemRespondPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkItemRespondPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workflowService.respondToWorkItem(payload);
       return result
         ? writeJson(response, 200, result)
@@ -370,7 +512,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/escalate") {
-      const payload = await readJsonBody<ManagedAgentPlatformWorkItemEscalatePayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkItemEscalatePayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workflowService.escalateWorkItem(payload);
       return result
         ? writeJson(response, 200, result)
@@ -378,12 +523,18 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/runs/list") {
-      const payload = await readJsonBody<ManagedAgentPlatformRunListPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformRunListPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       return writeJson(response, 200, options.workerRunService.listRuns(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/runs/detail") {
-      const payload = await readJsonBody<ManagedAgentPlatformRunDetailPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformRunDetailPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workerRunService.getRunDetail(payload);
       return result
         ? writeJson(response, 200, result)
@@ -391,13 +542,19 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/worker/runs/pull") {
-      const payload = await readJsonBody<ManagedAgentPlatformWorkerPullPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkerPullPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workerRunService.pullAssignedRun(payload);
       return writeJson(response, 200, result ?? {});
     }
 
     if (method === "POST" && url.pathname === "/api/platform/worker/runs/update") {
-      const payload = await readJsonBody<ManagedAgentPlatformWorkerRunStatusPayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkerRunStatusPayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workerRunService.updateRunStatus(payload);
       return result
         ? writeJson(response, 200, result)
@@ -405,7 +562,10 @@ async function handlePlatformRequest(
     }
 
     if (method === "POST" && url.pathname === "/api/platform/worker/runs/complete") {
-      const payload = await readJsonBody<ManagedAgentPlatformWorkerRunCompletePayload>(request);
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkerRunCompletePayload>(request, response);
+      if (!payload) {
+        return;
+      }
       const result = options.workerRunService.completeRun(payload);
       return result
         ? writeJson(response, 200, result)
@@ -449,6 +609,21 @@ async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   }
 
   return JSON.parse(body || "{}") as T;
+}
+
+async function readAuthorizedPayload<T extends { ownerPrincipalId: string }>(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<T | null> {
+  const payload = await readJsonBody<T>(request);
+  const authContext = getPlatformServiceAuthContext(request);
+
+  if (authContext && payload.ownerPrincipalId !== authContext.ownerPrincipalId) {
+    writeJson(response, 403, buildPlatformServiceOwnerMismatchBody());
+    return null;
+  }
+
+  return payload;
 }
 
 function buildNotFoundErrorResponse(message: string): { error: { code: "NOT_FOUND"; message: string } } {

@@ -1,8 +1,8 @@
-import { randomBytes, randomUUID, scryptSync } from "node:crypto";
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-type PlatformServiceRole = "gateway" | "worker";
+export type PlatformServiceRole = "gateway" | "worker";
 
 export interface PlatformServiceTokenSummary {
   tokenId: string;
@@ -111,6 +111,29 @@ export class PlatformTokenStore {
     return toSummary(token);
   }
 
+  authenticateToken(input: { secret: string }): PlatformServiceTokenSummary | null {
+    const secret = normalizeRequiredText(input.secret, "平台服务令牌不能为空。");
+    const store = this.readStore();
+
+    for (const token of store.tokens) {
+      if (token.revokedAt) {
+        continue;
+      }
+
+      if (!isSecretMatch(secret, token)) {
+        continue;
+      }
+
+      const now = this.now();
+      token.lastUsedAt = now;
+      token.updatedAt = now;
+      this.writeStore(store);
+      return toSummary(token);
+    }
+
+    return null;
+  }
+
   private readStore(): StoredPlatformTokenFile {
     const storePath = resolvePlatformTokenStorePath(this.workingDirectory);
     if (!existsSync(storePath)) {
@@ -149,6 +172,17 @@ function toSummary(token: StoredPlatformServiceToken): PlatformServiceTokenSumma
 
 function hashSecret(secret: string, salt: string): string {
   return scryptSync(secret, salt, 64).toString("base64");
+}
+
+function isSecretMatch(secret: string, token: StoredPlatformServiceToken): boolean {
+  const expected = Buffer.from(token.tokenHash, "base64");
+  const actual = Buffer.from(hashSecret(secret, token.tokenSalt), "base64");
+
+  if (expected.length !== actual.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expected, actual);
 }
 
 function normalizeRequiredText(value: string | null | undefined, message: string): string {
