@@ -11,6 +11,10 @@ export interface PlatformWorkerRunService {
   pullAssignedRun(payload: ManagedAgentPlatformWorkerPullPayload): ManagedAgentPlatformWorkerAssignedRunResult | null;
   updateRunStatus(payload: ManagedAgentPlatformWorkerRunStatusPayload): ManagedAgentPlatformWorkerRunMutationResult | null;
   completeRun(payload: ManagedAgentPlatformWorkerRunCompletePayload): ManagedAgentPlatformWorkerRunMutationResult | null;
+  listAssignedRuns(input: {
+    ownerPrincipalId: string;
+    organizationId?: string;
+  }): ManagedAgentPlatformWorkerAssignedRunResult[];
 }
 
 export interface InMemoryPlatformWorkerRunServiceOptions {
@@ -138,6 +142,18 @@ export function createInMemoryPlatformWorkerRunService(
       };
       assignedRuns.set(assignedRun.run.runId, cloneAssignedRun(assignedRun));
       return buildRunMutationResult(assignedRun);
+    },
+
+    listAssignedRuns(input) {
+      const ownerPrincipalId = input.ownerPrincipalId.trim();
+      const organizationId = typeof input.organizationId === "string" ? input.organizationId.trim() : "";
+
+      return Array.from(assignedRuns.values())
+        .filter((assignedRun) => (
+          assignedRun.organization.ownerPrincipalId === ownerPrincipalId
+          && (!organizationId || assignedRun.organization.organizationId === organizationId)
+        ))
+        .map((assignedRun) => cloneAssignedRun(assignedRun));
     },
   };
 }

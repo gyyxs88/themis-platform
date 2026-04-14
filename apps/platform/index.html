@@ -18,7 +18,7 @@
           <h1>Themis Platform</h1>
           <p class="platform-copy">
             独立平台控制面首版。当前已直接挂出 Worker Nodes 总览，并开始由 `themis-platform`
-            自己承接最小 `nodes/*` API。
+            自己承接最小 `nodes/*`、`agents/governance-overview` 和 `agents/waiting/list` API。
           </p>
         </div>
         <div class="platform-session-card">
@@ -37,11 +37,11 @@
               <p class="platform-panel-kicker">Access</p>
               <h2>平台 ownerPrincipalId</h2>
             </div>
-            <button id="platform-refresh-button" type="button" class="platform-button subtle">刷新节点</button>
+            <button id="platform-refresh-button" type="button" class="platform-button subtle">刷新控制面</button>
           </div>
 
           <p class="platform-panel-copy">
-            当前首版平台页会按 `ownerPrincipalId` 拉取节点总览。你可以手动填写，也可以从主 Themis
+            当前首版平台页会按 `ownerPrincipalId` 拉取节点总览和最小治理摘要。你可以手动填写，也可以从主 Themis
             的兼容入口跳转过来。
           </p>
 
@@ -70,7 +70,7 @@
               <p class="platform-panel-kicker">Worker Fleet</p>
               <h2>Nodes 总览</h2>
             </div>
-            <p class="platform-panel-copy">当前已接入节点读取；节点注册、续心跳和详情 API 也已在本仓落地。</p>
+            <p class="platform-panel-copy">当前已接入节点读取；节点注册、续心跳、详情与最小治理 API 都已在本仓落地。</p>
           </div>
 
           <div class="platform-summary-grid">
@@ -102,6 +102,49 @@
             先填写 ownerPrincipalId，再从平台控制面读取节点列表。
           </p>
           <div id="platform-nodes-list" class="platform-nodes-list"></div>
+        </section>
+
+        <section class="platform-panel">
+          <div class="platform-panel-head">
+            <div>
+              <p class="platform-panel-kicker">Governance</p>
+              <h2>Waiting Queue</h2>
+            </div>
+            <p class="platform-panel-copy">
+              当前已开始由独立 `themis-platform` 页面承接最小治理摘要与 waiting queue；后续再继续补 collaboration、mailbox 和值班面板。
+            </p>
+          </div>
+
+          <div class="platform-summary-grid">
+            <article class="platform-summary-card">
+              <span>待治理总数</span>
+              <strong id="platform-governance-total">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>等人处理</span>
+              <strong id="platform-governance-waiting-human">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>等 agent</span>
+              <strong id="platform-governance-waiting-agent">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>高关注</span>
+              <strong id="platform-governance-attention">0</strong>
+            </article>
+          </div>
+
+          <p id="platform-governance-status" class="platform-inline-note">
+            还没有读取治理摘要。
+          </p>
+          <p id="platform-hotspots-summary" class="platform-inline-note">
+            当前还没有 manager hotspot。
+          </p>
+          <div id="platform-hotspots-list" class="platform-hotspots-list"></div>
+          <p id="platform-waiting-empty" class="platform-empty-state">
+            先填写 ownerPrincipalId，再读取当前平台 waiting queue。
+          </p>
+          <div id="platform-waiting-list" class="platform-waiting-list"></div>
         </section>
       </main>
     </div>

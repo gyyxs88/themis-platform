@@ -82,6 +82,130 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
       executionContract: {
         workspacePath: "/srv/platform-alpha",
       },
+    }, {
+      organization: {
+        organizationId: "org-platform",
+        ownerPrincipalId: "principal-platform-owner",
+        displayName: "Platform Team",
+        slug: "platform-team",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+      node: {
+        nodeId: "node-alpha",
+        organizationId: "org-platform",
+        displayName: "Worker Alpha",
+        status: "online",
+        slotCapacity: 2,
+        slotAvailable: 1,
+        createdAt: "2026-04-14T09:30:00.000Z",
+        updatedAt: "2026-04-14T09:30:00.000Z",
+      },
+      targetAgent: {
+        agentId: "agent-beta",
+        organizationId: "org-platform",
+        displayName: "Agent Beta",
+        departmentRole: "Manager",
+        status: "active",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+      workItem: {
+        workItemId: "work-item-beta",
+        organizationId: "org-platform",
+        targetAgentId: "agent-beta",
+        sourceType: "human",
+        goal: "Review waiting human escalation.",
+        status: "waiting_human",
+        priority: "urgent",
+        waitingFor: "human",
+        createdAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:20:00.000Z",
+      },
+      run: {
+        runId: "run-beta",
+        organizationId: "org-platform",
+        workItemId: "work-item-beta",
+        nodeId: "node-alpha",
+        status: "waiting_action",
+        createdAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:20:00.000Z",
+      },
+      executionLease: {
+        leaseId: "lease-beta",
+        runId: "run-beta",
+        nodeId: "node-alpha",
+        workItemId: "work-item-beta",
+        leaseToken: "lease-token-beta",
+        status: "active",
+        createdAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:20:00.000Z",
+      },
+      executionContract: {
+        workspacePath: "/srv/platform-beta",
+      },
+    }, {
+      organization: {
+        organizationId: "org-platform",
+        ownerPrincipalId: "principal-platform-owner",
+        displayName: "Platform Team",
+        slug: "platform-team",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+      node: {
+        nodeId: "node-alpha",
+        organizationId: "org-platform",
+        displayName: "Worker Alpha",
+        status: "online",
+        slotCapacity: 2,
+        slotAvailable: 1,
+        createdAt: "2026-04-14T09:30:00.000Z",
+        updatedAt: "2026-04-14T09:30:00.000Z",
+      },
+      targetAgent: {
+        agentId: "agent-gamma",
+        organizationId: "org-platform",
+        displayName: "Agent Gamma",
+        departmentRole: "Manager",
+        status: "active",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+      workItem: {
+        workItemId: "work-item-gamma",
+        organizationId: "org-platform",
+        targetAgentId: "agent-gamma",
+        sourceType: "agent",
+        goal: "Wait for downstream agent confirmation.",
+        status: "waiting_agent",
+        priority: "normal",
+        waitingFor: "agent",
+        createdAt: "2026-04-14T09:25:00.000Z",
+        updatedAt: "2026-04-14T09:25:00.000Z",
+      },
+      run: {
+        runId: "run-gamma",
+        organizationId: "org-platform",
+        workItemId: "work-item-gamma",
+        nodeId: "node-alpha",
+        status: "waiting_action",
+        createdAt: "2026-04-14T09:25:00.000Z",
+        updatedAt: "2026-04-14T09:25:00.000Z",
+      },
+      executionLease: {
+        leaseId: "lease-gamma",
+        runId: "run-gamma",
+        nodeId: "node-alpha",
+        workItemId: "work-item-gamma",
+        leaseToken: "lease-token-gamma",
+        status: "active",
+        createdAt: "2026-04-14T09:25:00.000Z",
+        updatedAt: "2026-04-14T09:25:00.000Z",
+      },
+      executionContract: {
+        workspacePath: "/srv/platform-gamma",
+      },
     }],
   });
   const server = createPlatformApp({
@@ -271,6 +395,86 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
       requeuedWorkItemCount: 0,
     });
     assert.deepEqual(reclaimPayload.reclaimedLeases, []);
+
+    const governanceOverview = await fetch(`${baseUrl}/api/platform/agents/governance-overview`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+      }),
+    });
+    assert.equal(governanceOverview.status, 200);
+    const governanceOverviewPayload = await governanceOverview.json() as {
+      summary?: { total?: number; waitingHuman?: number; waitingAgent?: number; attentionCount?: number };
+      managerHotspots?: Array<{ managerAgentId?: string; displayName?: string; itemCount?: number }>;
+    };
+    assert.deepEqual(governanceOverviewPayload.summary, {
+      total: 2,
+      waitingHuman: 1,
+      waitingAgent: 1,
+      attentionCount: 1,
+    });
+    assert.deepEqual(governanceOverviewPayload.managerHotspots, [
+      {
+        managerAgentId: "agent-beta",
+        displayName: "Agent Beta",
+        itemCount: 1,
+      },
+      {
+        managerAgentId: "agent-gamma",
+        displayName: "Agent Gamma",
+        itemCount: 1,
+      },
+    ]);
+
+    const waitingList = await fetch(`${baseUrl}/api/platform/agents/waiting/list`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+      }),
+    });
+    assert.equal(waitingList.status, 200);
+    const waitingListPayload = await waitingList.json() as {
+      summary?: { total?: number; waitingHuman?: number; waitingAgent?: number; attentionCount?: number };
+      items?: Array<{ workItemId?: string; status?: string; priority?: string }>;
+    };
+    assert.deepEqual(waitingListPayload.summary, {
+      total: 2,
+      waitingHuman: 1,
+      waitingAgent: 1,
+      attentionCount: 1,
+    });
+    assert.deepEqual(waitingListPayload.items, [
+      {
+        workItemId: "work-item-beta",
+        organizationId: "org-platform",
+        targetAgentId: "agent-beta",
+        sourceType: "human",
+        goal: "Review waiting human escalation.",
+        status: "waiting_human",
+        priority: "urgent",
+        waitingFor: "human",
+        createdAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:20:00.000Z",
+      },
+      {
+        workItemId: "work-item-gamma",
+        organizationId: "org-platform",
+        targetAgentId: "agent-gamma",
+        sourceType: "agent",
+        goal: "Wait for downstream agent confirmation.",
+        status: "waiting_agent",
+        priority: "normal",
+        waitingFor: "agent",
+        createdAt: "2026-04-14T09:25:00.000Z",
+        updatedAt: "2026-04-14T09:25:00.000Z",
+      },
+    ]);
 
     const pull = await fetch(`${baseUrl}/api/platform/worker/runs/pull`, {
       method: "POST",

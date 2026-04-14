@@ -75,7 +75,9 @@ input {
 .platform-session-card,
 .platform-panel,
 .platform-summary-card,
-.platform-node-card {
+.platform-node-card,
+.platform-hotspot-card,
+.platform-waiting-card {
   border: 1px solid var(--platform-line);
   border-radius: 24px;
   background: var(--platform-surface);
@@ -219,11 +221,20 @@ input {
   margin-top: 18px;
 }
 
+.platform-hotspots-list,
+.platform-waiting-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
 .platform-empty-state {
   padding: 18px 0 2px;
 }
 
-.platform-node-card {
+.platform-node-card,
+.platform-hotspot-card,
+.platform-waiting-card {
   padding: 18px 20px;
   background: var(--platform-card);
 }
@@ -240,6 +251,12 @@ input {
   font-size: 20px;
 }
 
+.platform-waiting-goal {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
 .platform-node-meta,
 .platform-node-capabilities {
   display: flex;
@@ -253,6 +270,13 @@ input {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 16px;
+}
+
+.platform-hotspot-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
 }
 
 .platform-chip {

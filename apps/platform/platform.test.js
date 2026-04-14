@@ -82,6 +82,86 @@ test("initializePlatformSurface 会对节点治理动作调用对应平台接口
   });
 });
 
+test("initializePlatformSurface 会读取治理摘要与 waiting queue", async () => {
+  const document = createDocumentStub();
+  initializePlatformSurface({
+    document,
+    fetch: async (url) => {
+      if (url === "/api/web-auth/status") {
+        return createJsonResponse(200, { authenticated: true, tokenLabel: "platform-web" });
+      }
+
+      if (url === "/api/platform/nodes/list") {
+        return createJsonResponse(200, {
+          nodes: [
+            { nodeId: "node-a", status: "online" },
+            { nodeId: "node-b", status: "draining" },
+          ],
+        });
+      }
+
+      if (url === "/api/platform/agents/governance-overview") {
+        return createJsonResponse(200, {
+          summary: {
+            total: 2,
+            waitingHuman: 1,
+            waitingAgent: 1,
+            attentionCount: 1,
+          },
+          managerHotspots: [
+            {
+              managerAgentId: "agent-manager",
+              displayName: "经理·曜",
+              itemCount: 2,
+            },
+          ],
+        });
+      }
+
+      if (url === "/api/platform/agents/waiting/list") {
+        return createJsonResponse(200, {
+          items: [
+            {
+              workItemId: "work-item-1",
+              goal: "确认是否允许继续发布",
+              status: "waiting_human",
+              priority: "urgent",
+              targetAgentId: "agent-manager",
+              sourceType: "human",
+              updatedAt: "2026-04-14T10:10:00.000Z",
+            },
+          ],
+        });
+      }
+
+      return createJsonResponse(404, {
+        error: {
+          message: "unexpected request",
+        },
+      });
+    },
+    storage: {
+      getItem() {
+        return "principal-owner";
+      },
+      setItem() {},
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(document.getElementById("platform-session-title").textContent, "已登录：platform-web");
+  assert.equal(document.getElementById("platform-summary-total").textContent, "2");
+  assert.equal(document.getElementById("platform-governance-total").textContent, "2");
+  assert.equal(document.getElementById("platform-governance-waiting-human").textContent, "1");
+  assert.equal(document.getElementById("platform-governance-waiting-agent").textContent, "1");
+  assert.equal(document.getElementById("platform-governance-attention").textContent, "1");
+  assert.match(document.getElementById("platform-hotspots-summary").textContent, /1 个需关注的 manager 热点/);
+  assert.match(document.getElementById("platform-hotspots-list").innerHTML, /经理·曜/);
+  assert.match(document.getElementById("platform-waiting-list").innerHTML, /确认是否允许继续发布/);
+  assert.equal(document.getElementById("platform-waiting-empty").hidden, true);
+});
+
 test("summarizeReclaimResult 会归一化 reclaim summary", () => {
   assert.deepEqual(summarizeReclaimResult({
     summary: {
@@ -134,6 +214,15 @@ function createDocumentStub() {
     "platform-summary-online",
     "platform-summary-draining",
     "platform-summary-offline",
+    "platform-governance-status",
+    "platform-governance-total",
+    "platform-governance-waiting-human",
+    "platform-governance-waiting-agent",
+    "platform-governance-attention",
+    "platform-hotspots-summary",
+    "platform-hotspots-list",
+    "platform-waiting-empty",
+    "platform-waiting-list",
   ];
 
   for (const id of ids) {

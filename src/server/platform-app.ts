@@ -10,7 +10,12 @@ import type {
   ManagedAgentPlatformWorkerRunCompletePayload,
   ManagedAgentPlatformWorkerRunStatusPayload,
 } from "themis-contracts/managed-agent-platform-worker";
+import type {
+  ManagedAgentPlatformGovernanceFiltersPayload,
+  ManagedAgentPlatformWaitingQueueListPayload,
+} from "themis-contracts/managed-agent-platform-agents";
 import { readPlatformAsset } from "./platform-assets.js";
+import { createInMemoryPlatformGovernanceService, type PlatformGovernanceService } from "./platform-governance-service.js";
 import { createInMemoryPlatformNodeService, type PlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformWorkerRunService, type PlatformWorkerRunService } from "./platform-worker-run-service.js";
 
@@ -18,6 +23,7 @@ export interface PlatformAppOptions {
   serviceName?: string;
   nodeService?: PlatformNodeService;
   workerRunService?: PlatformWorkerRunService;
+  governanceService?: PlatformGovernanceService;
   webAuthTokenLabel?: string;
 }
 
@@ -27,6 +33,9 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
   const workerRunService = options.workerRunService ?? createInMemoryPlatformWorkerRunService({
     nodeService,
   });
+  const governanceService = options.governanceService ?? createInMemoryPlatformGovernanceService({
+    workerRunService,
+  });
   const webAuthTokenLabel = options.webAuthTokenLabel ?? "";
 
   return createServer((request, response) => {
@@ -34,6 +43,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       serviceName,
       nodeService,
       workerRunService,
+      governanceService,
       webAuthTokenLabel,
     });
   });
@@ -43,6 +53,7 @@ interface HandlePlatformRequestOptions {
   serviceName: string;
   nodeService: PlatformNodeService;
   workerRunService: PlatformWorkerRunService;
+  governanceService: PlatformGovernanceService;
   webAuthTokenLabel: string;
 }
 
@@ -125,6 +136,16 @@ async function handlePlatformRequest(
       return result
         ? writeJson(response, 200, result)
         : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/governance-overview") {
+      const payload = await readJsonBody<ManagedAgentPlatformGovernanceFiltersPayload>(request);
+      return writeJson(response, 200, options.governanceService.getGovernanceOverview(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/waiting/list") {
+      const payload = await readJsonBody<ManagedAgentPlatformWaitingQueueListPayload>(request);
+      return writeJson(response, 200, options.governanceService.listWaitingQueue(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/worker/runs/pull") {
