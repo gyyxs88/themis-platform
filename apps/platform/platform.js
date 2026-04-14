@@ -14,6 +14,32 @@ const EMPTY_WORK_ITEM_SUMMARY = {
   queued: 0,
 };
 
+function createEmptyOncallSummary() {
+  return {
+    generatedAt: "",
+    ownerPrincipalId: "",
+    organizationId: null,
+    counts: {
+      nodeTotal: 0,
+      nodeErrorCount: 0,
+      nodeWarningCount: 0,
+      waitingAttentionCount: 0,
+      waitingHumanCount: 0,
+      runWaitingActionCount: 0,
+      runFailedCount: 0,
+      pausedAgentCount: 0,
+    },
+    primaryDiagnosis: {
+      id: "",
+      severity: "info",
+      title: "",
+      summary: "",
+    },
+    recommendedNextSteps: [],
+    recommendations: [],
+  };
+}
+
 export function normalizeOwnerPrincipalId(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -88,6 +114,15 @@ export function initializePlatformSurface(options = {}) {
     summaryOnline: documentRef.getElementById("platform-summary-online"),
     summaryDraining: documentRef.getElementById("platform-summary-draining"),
     summaryOffline: documentRef.getElementById("platform-summary-offline"),
+    oncallStatus: documentRef.getElementById("platform-oncall-status"),
+    oncallErrors: documentRef.getElementById("platform-oncall-errors"),
+    oncallWarnings: documentRef.getElementById("platform-oncall-warnings"),
+    oncallWaiting: documentRef.getElementById("platform-oncall-waiting"),
+    oncallRuns: documentRef.getElementById("platform-oncall-runs"),
+    oncallDiagnosis: documentRef.getElementById("platform-oncall-diagnosis"),
+    oncallNextSteps: documentRef.getElementById("platform-oncall-next-steps"),
+    oncallEmpty: documentRef.getElementById("platform-oncall-empty"),
+    oncallList: documentRef.getElementById("platform-oncall-list"),
     governanceStatus: documentRef.getElementById("platform-governance-status"),
     governanceTotal: documentRef.getElementById("platform-governance-total"),
     governanceWaitingHuman: documentRef.getElementById("platform-governance-waiting-human"),
@@ -184,6 +219,7 @@ export function initializePlatformSurface(options = {}) {
       storage?.getItem?.(OWNER_PRINCIPAL_STORAGE_KEY) ?? "",
     ),
     nodes: [],
+    oncallSummary: createEmptyOncallSummary(),
     governanceOverview: {
       summary: { ...EMPTY_GOVERNANCE_SUMMARY },
       managerHotspots: [],
@@ -244,10 +280,15 @@ export function initializePlatformSurface(options = {}) {
 
   const render = () => {
     const nodeSummary = summarizeNodes(state.nodes);
+    const oncallSummary = normalizeOncallSummary(state.oncallSummary);
     const governanceSummary = normalizeGovernanceSummary(state.governanceOverview?.summary);
     const managerHotspots = Array.isArray(state.governanceOverview?.managerHotspots)
       ? state.governanceOverview.managerHotspots
       : [];
+    const oncallRecommendations = Array.isArray(oncallSummary.recommendations)
+      ? oncallSummary.recommendations
+      : [];
+    const blockedRunCount = oncallSummary.counts.runWaitingActionCount + oncallSummary.counts.runFailedCount;
     const collaborationParents = Array.isArray(state.collaborationDashboard?.parents)
       ? state.collaborationDashboard.parents
       : [];
@@ -264,6 +305,7 @@ export function initializePlatformSurface(options = {}) {
       (item) => item?.entry?.mailboxEntryId === state.selectedMailboxEntryId,
     ) ?? null;
     const hasNodes = state.nodes.length > 0;
+    const hasOncallRecommendations = oncallRecommendations.length > 0;
     const hasWaitingItems = state.waitingItems.length > 0;
     const hasCollaborationParents = collaborationParents.length > 0;
     const hasHandoffs = handoffItems.length > 0;
@@ -286,6 +328,13 @@ export function initializePlatformSurface(options = {}) {
         : state.ownerPrincipalId
           ? `当前共有 ${governanceSummary.total} 条待治理项，其中等人 ${governanceSummary.waitingHuman} 条、等 agent ${governanceSummary.waitingAgent} 条。`
           : "先填写 ownerPrincipalId，再查看当前平台下的治理摘要。";
+    const oncallStatusMessage = state.loadErrorMessage
+      ? state.loadErrorMessage
+      : state.loading
+        ? "正在汇总节点 attention、waiting 风险和 runs 卡点。"
+        : state.ownerPrincipalId
+          ? `当前主诊断：${resolveOncallSeverityLabel(oncallSummary.primaryDiagnosis.severity)}。`
+          : "先填写 ownerPrincipalId，再查看当前平台值班建议。";
     const runsStatusMessage = state.loadErrorMessage
       ? state.loadErrorMessage
       : state.loading
@@ -500,6 +549,53 @@ export function initializePlatformSurface(options = {}) {
     if (dom.nodesList) {
       dom.nodesList.innerHTML = hasNodes
         ? state.nodes.map((node) => renderNodeCard(node)).join("")
+        : "";
+    }
+
+    if (dom.oncallStatus) {
+      dom.oncallStatus.textContent = oncallStatusMessage;
+    }
+
+    if (dom.oncallErrors) {
+      dom.oncallErrors.textContent = String(oncallSummary.counts.nodeErrorCount);
+    }
+
+    if (dom.oncallWarnings) {
+      dom.oncallWarnings.textContent = String(oncallSummary.counts.nodeWarningCount);
+    }
+
+    if (dom.oncallWaiting) {
+      dom.oncallWaiting.textContent = String(oncallSummary.counts.waitingAttentionCount);
+    }
+
+    if (dom.oncallRuns) {
+      dom.oncallRuns.textContent = String(blockedRunCount);
+    }
+
+    if (dom.oncallDiagnosis) {
+      dom.oncallDiagnosis.innerHTML = state.ownerPrincipalId
+        ? renderOncallDiagnosisCard(oncallSummary.primaryDiagnosis)
+        : "";
+    }
+
+    if (dom.oncallNextSteps) {
+      dom.oncallNextSteps.innerHTML = state.ownerPrincipalId
+        ? renderOncallNextSteps(oncallSummary.recommendedNextSteps)
+        : "";
+    }
+
+    if (dom.oncallEmpty) {
+      dom.oncallEmpty.hidden = hasOncallRecommendations;
+      dom.oncallEmpty.textContent = state.loadErrorMessage
+        ? "值班建议读取失败，请先排查平台控制面。"
+        : state.ownerPrincipalId
+          ? "当前没有需要立即处理的值班建议。"
+          : "先填写 ownerPrincipalId，再读取当前平台的值班建议。";
+    }
+
+    if (dom.oncallList) {
+      dom.oncallList.innerHTML = hasOncallRecommendations
+        ? oncallRecommendations.map((item) => renderOncallRecommendationCard(item)).join("")
         : "";
     }
 
@@ -799,6 +895,7 @@ export function initializePlatformSurface(options = {}) {
     if (!state.ownerPrincipalId || typeof fetchFn !== "function") {
       state.loadErrorMessage = "";
       state.nodes = [];
+      state.oncallSummary = createEmptyOncallSummary();
       state.governanceOverview = {
         summary: { ...EMPTY_GOVERNANCE_SUMMARY },
         managerHotspots: [],
@@ -837,6 +934,7 @@ export function initializePlatformSurface(options = {}) {
     try {
       const [
         nodesPayload,
+        oncallPayload,
         governancePayload,
         waitingPayload,
         collaborationPayload,
@@ -848,6 +946,9 @@ export function initializePlatformSurface(options = {}) {
         requestPlatformJson(fetchFn, "/api/platform/nodes/list", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取节点列表失败。"),
+        requestPlatformJson(fetchFn, "/api/platform/oncall/summary", {
+          ownerPrincipalId: state.ownerPrincipalId,
+        }, "读取值班建议失败。"),
         requestPlatformJson(fetchFn, "/api/platform/agents/governance-overview", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取治理摘要失败。"),
@@ -872,6 +973,7 @@ export function initializePlatformSurface(options = {}) {
       ]);
 
       state.nodes = Array.isArray(nodesPayload?.nodes) ? nodesPayload.nodes : [];
+      state.oncallSummary = normalizeOncallSummary(oncallPayload);
       state.governanceOverview = {
         summary: normalizeGovernanceSummary(governancePayload?.summary),
         managerHotspots: Array.isArray(governancePayload?.managerHotspots) ? governancePayload.managerHotspots : [],
@@ -966,6 +1068,7 @@ export function initializePlatformSurface(options = {}) {
         : null;
     } catch (error) {
       state.nodes = [];
+      state.oncallSummary = createEmptyOncallSummary();
       state.governanceOverview = {
         summary: { ...EMPTY_GOVERNANCE_SUMMARY },
         managerHotspots: [],
@@ -2033,6 +2136,60 @@ function renderProjectBindingCard(binding) {
   </article>`;
 }
 
+function renderOncallDiagnosisCard(diagnosis) {
+  const severity = resolveOncallSeverity(diagnosis?.severity);
+  const title = diagnosis?.title || "当前还没有值班诊断";
+  const summary = diagnosis?.summary || "填入 ownerPrincipalId 后，这里会显示当前平台值班主诊断。";
+
+  return `<div>
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(title)}</h3>
+        <div class="platform-node-meta">
+          <span class="platform-chip severity-${escapeHtml(severity)}">${escapeHtml(resolveOncallSeverityLabel(severity))}</span>
+          ${diagnosis?.id ? `<span class="platform-chip">${escapeHtml(diagnosis.id)}</span>` : ""}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">${escapeHtml(summary)}</p>
+  </div>`;
+}
+
+function renderOncallNextSteps(steps) {
+  const items = Array.isArray(steps)
+    ? steps.filter((item) => typeof item === "string" && item.trim())
+    : [];
+
+  if (items.length === 0) {
+    return '<p class="platform-inline-note">当前没有额外建议动作，继续按 nodes -> waiting queue -> recent runs 的顺序巡检即可。</p>';
+  }
+
+  return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
+function renderOncallRecommendationCard(recommendation) {
+  const severity = resolveOncallSeverity(recommendation?.severity);
+  const category = resolveOncallCategoryLabel(recommendation?.category);
+  const chips = [
+    category ? `分类 ${category}` : "",
+    recommendation?.subjectId ? `对象 ${recommendation.subjectId}` : "",
+  ].filter(Boolean);
+
+  return `<article class="platform-oncall-card">
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(recommendation?.title || recommendation?.recommendationId || "未命名建议")}</h3>
+        <div class="platform-node-meta">
+          <span class="platform-chip severity-${escapeHtml(severity)}">${escapeHtml(resolveOncallSeverityLabel(severity))}</span>
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">${escapeHtml(recommendation?.summary || "暂无摘要")}</p>
+    <p class="platform-inline-note">建议动作：${escapeHtml(recommendation?.recommendedAction || "暂无")}</p>
+  </article>`;
+}
+
 function renderCollaborationParentCard(parent, selectedHandoffAgentId) {
   const items = Array.isArray(parent?.items) ? parent.items : [];
   const leadAgentId = normalizeOwnerPrincipalId(items[0]?.targetAgentId);
@@ -2193,6 +2350,38 @@ function resolveNodeActions(node) {
     default:
       return [];
   }
+}
+
+function normalizeOncallSummary(summary) {
+  const counts = summary?.counts ?? {};
+  const primaryDiagnosis = summary?.primaryDiagnosis ?? {};
+  return {
+    generatedAt: typeof summary?.generatedAt === "string" ? summary.generatedAt : "",
+    ownerPrincipalId: typeof summary?.ownerPrincipalId === "string" ? summary.ownerPrincipalId : "",
+    organizationId: normalizeOptionalText(summary?.organizationId),
+    counts: {
+      nodeTotal: normalizeNumber(counts?.nodeTotal, 0),
+      nodeErrorCount: normalizeNumber(counts?.nodeErrorCount, 0),
+      nodeWarningCount: normalizeNumber(counts?.nodeWarningCount, 0),
+      waitingAttentionCount: normalizeNumber(counts?.waitingAttentionCount, 0),
+      waitingHumanCount: normalizeNumber(counts?.waitingHumanCount, 0),
+      runWaitingActionCount: normalizeNumber(counts?.runWaitingActionCount, 0),
+      runFailedCount: normalizeNumber(counts?.runFailedCount, 0),
+      pausedAgentCount: normalizeNumber(counts?.pausedAgentCount, 0),
+    },
+    primaryDiagnosis: {
+      id: typeof primaryDiagnosis?.id === "string" ? primaryDiagnosis.id : "",
+      severity: resolveOncallSeverity(primaryDiagnosis?.severity),
+      title: typeof primaryDiagnosis?.title === "string" ? primaryDiagnosis.title : "",
+      summary: typeof primaryDiagnosis?.summary === "string" ? primaryDiagnosis.summary : "",
+    },
+    recommendedNextSteps: Array.isArray(summary?.recommendedNextSteps)
+      ? summary.recommendedNextSteps.filter((item) => typeof item === "string" && item.trim())
+      : [],
+    recommendations: Array.isArray(summary?.recommendations)
+      ? summary.recommendations.filter((item) => item && typeof item === "object")
+      : [],
+  };
 }
 
 function normalizeGovernanceSummary(summary) {
@@ -2464,6 +2653,38 @@ function resolveRunStatusLabel(status) {
       return "中断";
     default:
       return typeof status === "string" ? status : "";
+  }
+}
+
+function resolveOncallSeverity(value) {
+  return ["error", "warning", "info"].includes(value)
+    ? value
+    : "info";
+}
+
+function resolveOncallSeverityLabel(severity) {
+  switch (severity) {
+    case "error":
+      return "立即处理";
+    case "warning":
+      return "持续关注";
+    default:
+      return "状态正常";
+  }
+}
+
+function resolveOncallCategoryLabel(category) {
+  switch (category) {
+    case "worker_fleet":
+      return "节点";
+    case "waiting_queue":
+      return "待治理";
+    case "runs":
+      return "执行链路";
+    case "agents":
+      return "agent 容量";
+    default:
+      return "";
   }
 }
 

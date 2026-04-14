@@ -42,6 +42,7 @@ import type {
   ManagedAgentPlatformProjectWorkspaceBindingListPayload,
   ManagedAgentPlatformProjectWorkspaceBindingUpsertPayload,
 } from "themis-contracts/managed-agent-platform-projects";
+import type { ManagedAgentPlatformOncallSummaryPayload } from "themis-contracts/managed-agent-platform-oncall";
 import { readPlatformAsset } from "./platform-assets.js";
 import {
   createInMemoryPlatformCollaborationService,
@@ -53,6 +54,7 @@ import {
 } from "./platform-control-plane-service.js";
 import { createInMemoryPlatformGovernanceService, type PlatformGovernanceService } from "./platform-governance-service.js";
 import { createInMemoryPlatformNodeService, type PlatformNodeService } from "./platform-node-service.js";
+import { createInMemoryPlatformOncallService, type PlatformOncallService } from "./platform-oncall-service.js";
 import { createInMemoryPlatformWorkerRunService, type PlatformWorkerRunService } from "./platform-worker-run-service.js";
 import { createInMemoryPlatformWorkflowService, type PlatformWorkflowService } from "./platform-workflow-service.js";
 
@@ -64,6 +66,7 @@ export interface PlatformAppOptions {
   collaborationService?: PlatformCollaborationService;
   workflowService?: PlatformWorkflowService;
   controlPlaneService?: PlatformControlPlaneService;
+  oncallService?: PlatformOncallService;
   webAuthTokenLabel?: string;
 }
 
@@ -83,6 +86,12 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
     workerRunService,
   });
   const controlPlaneService = options.controlPlaneService ?? createInMemoryPlatformControlPlaneService();
+  const oncallService = options.oncallService ?? createInMemoryPlatformOncallService({
+    nodeService,
+    governanceService,
+    workerRunService,
+    controlPlaneService,
+  });
   const webAuthTokenLabel = options.webAuthTokenLabel ?? "";
 
   return createServer((request, response) => {
@@ -94,6 +103,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       collaborationService,
       workflowService,
       controlPlaneService,
+      oncallService,
       webAuthTokenLabel,
     });
   });
@@ -107,6 +117,7 @@ interface HandlePlatformRequestOptions {
   collaborationService: PlatformCollaborationService;
   workflowService: PlatformWorkflowService;
   controlPlaneService: PlatformControlPlaneService;
+  oncallService: PlatformOncallService;
   webAuthTokenLabel: string;
 }
 
@@ -137,6 +148,11 @@ async function handlePlatformRequest(
         authenticated: Boolean(options.webAuthTokenLabel),
         tokenLabel: options.webAuthTokenLabel,
       });
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/oncall/summary") {
+      const payload = await readJsonBody<ManagedAgentPlatformOncallSummaryPayload>(request);
+      return writeJson(response, 200, options.oncallService.getOncallSummary(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/register") {

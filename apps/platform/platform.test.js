@@ -422,6 +422,42 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
         });
       }
 
+      if (url === "/api/platform/oncall/summary") {
+        return createJsonResponse(200, {
+          counts: {
+            nodeTotal: 2,
+            nodeErrorCount: 1,
+            nodeWarningCount: 1,
+            waitingAttentionCount: 1,
+            waitingHumanCount: 1,
+            runWaitingActionCount: 1,
+            runFailedCount: 0,
+            pausedAgentCount: 0,
+          },
+          primaryDiagnosis: {
+            id: "oncall_warning_attention",
+            severity: "warning",
+            title: "当前有需要继续跟进的值班建议",
+            summary: "节点 warning 1 台，高关注 waiting 1 条，waiting_action run 1 条。",
+          },
+          recommendedNextSteps: [
+            "优先查看 waiting queue 的高关注项。",
+            "对 waiting_action runs，按 handoff -> mailbox -> work-item detail 的顺序补齐上下文。",
+          ],
+          recommendations: [
+            {
+              recommendationId: "node:node-b:draining_active_lease",
+              category: "worker_fleet",
+              severity: "warning",
+              title: "Worker Beta 需要值班处理",
+              summary: "节点正在 draining，仍有任务在跑。",
+              recommendedAction: "继续观察节点 active lease 是否自然清空。",
+              subjectId: "node-b",
+            },
+          ],
+        });
+      }
+
       if (url === "/api/platform/agents/governance-overview") {
         return createJsonResponse(200, {
           summary: {
@@ -688,6 +724,15 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
 
   assert.equal(document.getElementById("platform-session-title").textContent, "已登录：platform-web");
   assert.equal(document.getElementById("platform-summary-total").textContent, "2");
+  assert.equal(document.getElementById("platform-oncall-errors").textContent, "1");
+  assert.equal(document.getElementById("platform-oncall-warnings").textContent, "1");
+  assert.equal(document.getElementById("platform-oncall-waiting").textContent, "1");
+  assert.equal(document.getElementById("platform-oncall-runs").textContent, "1");
+  assert.match(document.getElementById("platform-oncall-status").textContent, /持续关注/);
+  assert.match(document.getElementById("platform-oncall-diagnosis").innerHTML, /当前有需要继续跟进的值班建议/);
+  assert.match(document.getElementById("platform-oncall-next-steps").innerHTML, /优先查看 waiting queue 的高关注项/);
+  assert.match(document.getElementById("platform-oncall-list").innerHTML, /Worker Beta 需要值班处理/);
+  assert.equal(document.getElementById("platform-oncall-empty").hidden, true);
   assert.equal(document.getElementById("platform-governance-total").textContent, "2");
   assert.equal(document.getElementById("platform-governance-waiting-human").textContent, "1");
   assert.equal(document.getElementById("platform-governance-waiting-agent").textContent, "1");
@@ -776,6 +821,15 @@ function createDocumentStub() {
     "platform-summary-online",
     "platform-summary-draining",
     "platform-summary-offline",
+    "platform-oncall-status",
+    "platform-oncall-errors",
+    "platform-oncall-warnings",
+    "platform-oncall-waiting",
+    "platform-oncall-runs",
+    "platform-oncall-diagnosis",
+    "platform-oncall-next-steps",
+    "platform-oncall-empty",
+    "platform-oncall-list",
     "platform-governance-status",
     "platform-governance-total",
     "platform-governance-waiting-human",

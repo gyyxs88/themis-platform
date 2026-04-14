@@ -17,8 +17,8 @@
           <p class="platform-kicker">Control Plane</p>
           <h1>Themis Platform</h1>
           <p class="platform-copy">
-            独立平台控制面首版。当前已直接挂出 Worker Nodes 总览，并开始由 `themis-platform`
-            自己承接最小 `nodes/*`、`agents/governance-overview` 和 `agents/waiting/list` API。
+            独立平台控制面首版。当前已由 `themis-platform` 自己承接 nodes、governance、协作、
+            work-items、mailbox、recent runs、agents、projects 和值班建议读面。
           </p>
         </div>
         <div class="platform-session-card">
@@ -111,7 +111,7 @@
               <h2>Waiting Queue</h2>
             </div>
             <p class="platform-panel-copy">
-              当前已开始由独立 `themis-platform` 页面承接最小治理摘要与 waiting queue；后续再继续补 collaboration、mailbox 和值班面板。
+              当前已由独立 `themis-platform` 页面承接治理摘要与 waiting queue；高关注项会继续汇入下面的值班建议面板。
             </p>
           </div>
 
@@ -145,6 +145,47 @@
             先填写 ownerPrincipalId，再读取当前平台 waiting queue。
           </p>
           <div id="platform-waiting-list" class="platform-waiting-list"></div>
+        </section>
+
+        <section class="platform-panel">
+          <div class="platform-panel-head">
+            <div>
+              <p class="platform-panel-kicker">Oncall</p>
+              <h2>值班建议</h2>
+            </div>
+            <p class="platform-panel-copy">
+              这里会统一汇总 Worker Node attention、waiting 风险、runs 卡点和 paused agents 容量提示，作为平台值班首屏读面。
+            </p>
+          </div>
+
+          <div class="platform-summary-grid">
+            <article class="platform-summary-card">
+              <span>错误节点</span>
+              <strong id="platform-oncall-errors">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>告警节点</span>
+              <strong id="platform-oncall-warnings">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>高关注 waiting</span>
+              <strong id="platform-oncall-waiting">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>卡住 runs</span>
+              <strong id="platform-oncall-runs">0</strong>
+            </article>
+          </div>
+
+          <p id="platform-oncall-status" class="platform-inline-note">
+            还没有读取值班建议。
+          </p>
+          <div id="platform-oncall-diagnosis" class="platform-diagnosis-card"></div>
+          <div id="platform-oncall-next-steps" class="platform-next-steps"></div>
+          <p id="platform-oncall-empty" class="platform-empty-state">
+            先填写 ownerPrincipalId，再读取当前平台的值班建议。
+          </p>
+          <div id="platform-oncall-list" class="platform-oncall-list"></div>
         </section>
 
         <section class="platform-panel">
