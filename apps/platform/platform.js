@@ -39,6 +39,15 @@ export function summarizeNodes(nodes) {
   return summary;
 }
 
+export function summarizeReclaimResult(result) {
+  const summary = result?.summary ?? {};
+  return {
+    activeLeaseCount: Number(summary.activeLeaseCount ?? 0),
+    reclaimedRunCount: Number(summary.reclaimedRunCount ?? 0),
+    requeuedWorkItemCount: Number(summary.requeuedWorkItemCount ?? 0),
+  };
+}
+
 export function initializePlatformSurface(options = {}) {
   const documentRef = options.document ?? globalThis.document;
 
@@ -58,6 +67,7 @@ export function initializePlatformSurface(options = {}) {
     ownerNote: documentRef.getElementById("platform-owner-note"),
     refreshButton: documentRef.getElementById("platform-refresh-button"),
     nodesStatus: documentRef.getElementById("platform-nodes-status"),
+    actionStatus: documentRef.getElementById("platform-action-status"),
     nodesEmpty: documentRef.getElementById("platform-nodes-empty"),
     nodesList: documentRef.getElementById("platform-nodes-list"),
     summaryTotal: documentRef.getElementById("platform-summary-total"),
@@ -118,6 +128,14 @@ export function initializePlatformSurface(options = {}) {
 
     if (dom.nodesStatus) {
       dom.nodesStatus.textContent = statusMessage;
+    }
+
+    if (dom.actionStatus) {
+      dom.actionStatus.textContent = state.actionNodeId
+        ? `正在治理节点 ${state.actionNodeId}。`
+        : state.errorMessage
+          ? "最近一次治理动作失败。"
+          : "可直接在节点卡片上执行 drain / offline / reclaim。";
     }
 
     if (dom.summaryTotal) {
@@ -249,6 +267,16 @@ export function initializePlatformSurface(options = {}) {
       if (updatedNode?.nodeId) {
         state.nodes = state.nodes.map((node) => node?.nodeId === updatedNode.nodeId ? updatedNode : node);
       }
+
+      if (action === "reclaim") {
+        const summary = summarizeReclaimResult(payload);
+        state.errorMessage = [
+          `节点 ${normalizedNodeId} reclaim 完成`,
+          `activeLease=${summary.activeLeaseCount}`,
+          `reclaimedRun=${summary.reclaimedRunCount}`,
+          `requeuedWorkItem=${summary.requeuedWorkItemCount}`,
+        ].join(" | ");
+      }
     } catch (error) {
       state.errorMessage = error instanceof Error ? error.message : `节点 ${action} 失败。`;
     } finally {
@@ -278,7 +306,7 @@ export function initializePlatformSurface(options = {}) {
     const action = actionButton.getAttribute("data-platform-node-action");
     const nodeId = actionButton.getAttribute("data-platform-node-id");
 
-    if (action === "drain" || action === "offline") {
+    if (action === "drain" || action === "offline" || action === "reclaim") {
       void updateNodeStatus(nodeId, action);
     }
   });
@@ -356,6 +384,11 @@ function resolveNodeActions(node) {
     case "draining":
       return [
         { id: "offline", label: "Offline" },
+        { id: "reclaim", label: "Reclaim" },
+      ];
+    case "offline":
+      return [
+        { id: "reclaim", label: "Reclaim" },
       ];
     default:
       return [];

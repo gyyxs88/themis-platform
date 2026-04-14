@@ -73,10 +73,14 @@ test("createInMemoryPlatformNodeService 会支持 register、heartbeat、list �
   assert.equal(detail?.organization.ownerPrincipalId, "principal-platform-owner");
   assert.equal(detail?.node.nodeId, "node-fixed");
   assert.deepEqual(detail?.leaseSummary, {
-    activeLeaseCount: 0,
-    activeRunCount: 0,
+    totalCount: 0,
+    activeCount: 0,
+    expiredCount: 0,
+    releasedCount: 0,
+    revokedCount: 0,
   });
-  assert.deepEqual(detail?.leases, []);
+  assert.deepEqual(detail?.activeExecutionLeases, []);
+  assert.deepEqual(detail?.recentExecutionLeases, []);
 
   const denied = service.getNodeDetail({
     ownerPrincipalId: "principal-other-owner",
@@ -89,4 +93,16 @@ test("createInMemoryPlatformNodeService 会支持 register、heartbeat、list �
     nodeId: "node-missing",
   });
   assert.equal(missingMutation, null);
+
+  const reclaim = service.reclaimNode({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-fixed",
+  });
+  assert.equal(reclaim?.node.status, "offline");
+  assert.deepEqual(reclaim?.summary, {
+    activeLeaseCount: 0,
+    reclaimedRunCount: 0,
+    requeuedWorkItemCount: 0,
+  });
+  assert.deepEqual(reclaim?.reclaimedLeases, []);
 });

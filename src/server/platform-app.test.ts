@@ -103,13 +103,18 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     assert.equal(detail.status, 200);
     const detailPayload = await detail.json() as {
       node?: { nodeId?: string };
-      leaseSummary?: { activeLeaseCount?: number; activeRunCount?: number };
+      leaseSummary?: { totalCount?: number; activeCount?: number; revokedCount?: number };
+      activeExecutionLeases?: Array<unknown>;
     };
     assert.equal(detailPayload.node?.nodeId, "node-alpha");
     assert.deepEqual(detailPayload.leaseSummary, {
-      activeLeaseCount: 0,
-      activeRunCount: 0,
+      totalCount: 0,
+      activeCount: 0,
+      expiredCount: 0,
+      releasedCount: 0,
+      revokedCount: 0,
     });
+    assert.deepEqual(detailPayload.activeExecutionLeases, []);
 
     const heartbeat = await fetch(`${baseUrl}/api/platform/nodes/heartbeat`, {
       method: "POST",
@@ -164,6 +169,31 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     };
     assert.equal(offlinePayload.node?.status, "offline");
     assert.equal(offlinePayload.node?.slotAvailable, 0);
+
+    const reclaim = await fetch(`${baseUrl}/api/platform/nodes/reclaim`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-alpha",
+      }),
+    });
+    assert.equal(reclaim.status, 200);
+    const reclaimPayload = await reclaim.json() as {
+      node?: { status?: string; slotAvailable?: number };
+      summary?: { activeLeaseCount?: number; reclaimedRunCount?: number; requeuedWorkItemCount?: number };
+      reclaimedLeases?: Array<unknown>;
+    };
+    assert.equal(reclaimPayload.node?.status, "offline");
+    assert.equal(reclaimPayload.node?.slotAvailable, 0);
+    assert.deepEqual(reclaimPayload.summary, {
+      activeLeaseCount: 0,
+      reclaimedRunCount: 0,
+      requeuedWorkItemCount: 0,
+    });
+    assert.deepEqual(reclaimPayload.reclaimedLeases, []);
 
     const blocked = await fetch(`${baseUrl}/api/runtime/config`);
     assert.equal(blocked.status, 404);

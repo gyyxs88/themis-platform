@@ -2,9 +2,11 @@ import type {
   ManagedAgentPlatformNodeDetailPayload,
   ManagedAgentPlatformNodeHeartbeatPayload,
   ManagedAgentPlatformNodeListPayload,
+  ManagedAgentPlatformNodeReclaimPayload,
   ManagedAgentPlatformNodeRegisterPayload,
   ManagedAgentPlatformWorkerNodeDetailInput,
   ManagedAgentPlatformWorkerNodeDetailResult,
+  ManagedAgentPlatformWorkerNodeLeaseRecoveryResult,
   ManagedAgentPlatformWorkerNodeMutationResult,
   ManagedAgentPlatformWorkerNodeRecord,
   ManagedAgentPlatformWorkerOrganizationRecord,
@@ -17,6 +19,7 @@ export interface PlatformNodeService {
   getNodeDetail(payload: ManagedAgentPlatformNodeDetailPayload): ManagedAgentPlatformWorkerNodeDetailResult | null;
   drainNode(payload: PlatformNodeMutationPayload): ManagedAgentPlatformWorkerNodeMutationResult | null;
   offlineNode(payload: PlatformNodeMutationPayload): ManagedAgentPlatformWorkerNodeMutationResult | null;
+  reclaimNode(payload: ManagedAgentPlatformNodeReclaimPayload): ManagedAgentPlatformWorkerNodeLeaseRecoveryResult | null;
 }
 
 export interface PlatformNodeMutationPayload extends ManagedAgentPlatformWorkerNodeDetailInput {
@@ -152,10 +155,14 @@ export function createInMemoryPlatformNodeService(
         organization,
         node,
         leaseSummary: {
-          activeLeaseCount: 0,
-          activeRunCount: 0,
+          totalCount: 0,
+          activeCount: 0,
+          expiredCount: 0,
+          releasedCount: 0,
+          revokedCount: 0,
         },
-        leases: [],
+        activeExecutionLeases: [],
+        recentExecutionLeases: [],
       };
     },
 
@@ -167,6 +174,27 @@ export function createInMemoryPlatformNodeService(
       return mutateNodeStatus(organizations, nodes, payload, "offline", {
         slotAvailable: 0,
       });
+    },
+
+    reclaimNode(payload) {
+      const mutation = mutateNodeStatus(organizations, nodes, payload, "offline", {
+        slotAvailable: 0,
+      });
+
+      if (!mutation) {
+        return null;
+      }
+
+      return {
+        organization: mutation.organization,
+        node: mutation.node,
+        summary: {
+          activeLeaseCount: 0,
+          reclaimedRunCount: 0,
+          requeuedWorkItemCount: 0,
+        },
+        reclaimedLeases: [],
+      };
     },
   };
 }

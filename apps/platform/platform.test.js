@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { initializePlatformSurface, resolveInitialOwnerPrincipalId, summarizeNodes } from "./platform.js";
+import {
+  initializePlatformSurface,
+  resolveInitialOwnerPrincipalId,
+  summarizeNodes,
+  summarizeReclaimResult,
+} from "./platform.js";
 
 test("resolveInitialOwnerPrincipalId 会优先读取 query param", () => {
   assert.equal(
@@ -77,6 +82,20 @@ test("initializePlatformSurface 会对节点治理动作调用对应平台接口
   });
 });
 
+test("summarizeReclaimResult 会归一化 reclaim summary", () => {
+  assert.deepEqual(summarizeReclaimResult({
+    summary: {
+      activeLeaseCount: 1,
+      reclaimedRunCount: 2,
+      requeuedWorkItemCount: 3,
+    },
+  }), {
+    activeLeaseCount: 1,
+    reclaimedRunCount: 2,
+    requeuedWorkItemCount: 3,
+  });
+});
+
 function createJsonResponse(status, payload) {
   return {
     ok: status >= 200 && status < 300,
@@ -108,6 +127,7 @@ function createDocumentStub() {
     "platform-owner-note",
     "platform-refresh-button",
     "platform-nodes-status",
+    "platform-action-status",
     "platform-nodes-empty",
     "platform-nodes-list",
     "platform-summary-total",
