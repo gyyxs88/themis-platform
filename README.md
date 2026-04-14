@@ -5,7 +5,7 @@
 负责平台控制面、平台页面、节点/租约/调度/值班治理。
 
 - 当前入口：`src/server/platform-main.ts`
-- 当前状态：已落入最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/governance-overview|waiting/list` 最小治理面、`worker/runs/pull|update|complete` 最小执行链路，以及独立 `themis-platform` CLI 的 `auth platform / doctor worker-fleet / worker-fleet` 首版实现，并开始通过 `file:../themis-contracts` 依赖消费共享 access / worker / agents 契约
+- 当前状态：已落入最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/governance-overview|waiting/list` 最小治理面、`runs/list|detail` recent runs 读面、`worker/runs/pull|update|complete` 最小执行链路，以及独立 `themis-platform` CLI 的 `auth platform / doctor worker-fleet / worker-fleet` 首版实现，并开始通过 `file:../themis-contracts` 依赖消费共享 access / worker / agents / collaboration 契约
 - 迁移依据：请对照 `themis` 主仓里的 `docs/repository/themis-three-layer-split-migration-checklist.md`
 
 当前最小能力：
@@ -16,6 +16,7 @@
 - `GET /api/web-auth/status` 返回当前平台 Web 登录状态
 - `POST /api/platform/nodes/register|heartbeat|list|detail|drain|offline|reclaim` 提供最小节点控制面 API
 - `POST /api/platform/agents/governance-overview|waiting/list` 提供最小治理摘要与 waiting queue API
+- `POST /api/platform/runs/list|detail` 提供最小 recent runs 读面
 - `POST /api/platform/worker/runs/pull|update|complete` 提供最小 Worker 执行回传 API
 - `./themis-platform auth platform list|add|remove|rename` 提供平台服务令牌的最小本地治理入口
 - `./themis-platform doctor worker-fleet` 提供 Worker Fleet 巡检摘要
@@ -32,6 +33,6 @@
 
 - `auth platform` 首版当前使用本地 `infra/local/platform-service-tokens.json` 保存平台服务令牌元数据，后续再和平台持久化控制面打通。
 - `doctor worker-fleet` 与 `worker-fleet` 已迁入独立平台仓，但当前仍只覆盖最小节点值班与治理闭环。
-- 当前治理页仍只覆盖最小 `governance-overview + waiting/list`；`collaboration / mailbox / runs detail / 值班建议` 仍待继续迁入。
+- 当前治理页已覆盖最小 `governance-overview + waiting/list + recent runs`；`collaboration / mailbox / 值班建议` 仍待继续迁入。
 
-下一步应优先继续迁入剩余真实 `http-platform` 路由与独立前端页面，包括 `collaboration / mailbox / runs` 这批平台治理读面，以及把本地 token 存储与平台服务端鉴权事实继续收口到同一控制面。
+下一步应优先继续迁入剩余真实 `http-platform` 路由与独立前端页面，包括 `collaboration / mailbox` 这批平台治理读面，以及把本地 token 存储与平台服务端鉴权事实继续收口到同一控制面。

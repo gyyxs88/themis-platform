@@ -146,6 +146,34 @@
           </p>
           <div id="platform-waiting-list" class="platform-waiting-list"></div>
         </section>
+
+        <section class="platform-panel">
+          <div class="platform-panel-head">
+            <div>
+              <p class="platform-panel-kicker">Runs</p>
+              <h2>Recent Runs</h2>
+            </div>
+            <p class="platform-panel-copy">
+              当前先接入最近 runs 列表和单条 detail；后续再继续补更完整的值班诊断与协作视角。
+            </p>
+          </div>
+
+          <div class="platform-summary-grid platform-summary-grid--compact">
+            <article class="platform-summary-card">
+              <span>最近 runs</span>
+              <strong id="platform-runs-total">0</strong>
+            </article>
+          </div>
+
+          <p id="platform-runs-status" class="platform-inline-note">
+            还没有读取 runs 列表。
+          </p>
+          <p id="platform-runs-empty" class="platform-empty-state">
+            先填写 ownerPrincipalId，再读取当前平台 runs。
+          </p>
+          <div id="platform-runs-list" class="platform-runs-list"></div>
+          <div id="platform-run-detail" class="platform-run-detail"></div>
+        </section>
       </main>
     </div>
 

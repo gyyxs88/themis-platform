@@ -14,6 +14,10 @@ import type {
   ManagedAgentPlatformGovernanceFiltersPayload,
   ManagedAgentPlatformWaitingQueueListPayload,
 } from "themis-contracts/managed-agent-platform-agents";
+import type {
+  ManagedAgentPlatformRunDetailPayload,
+  ManagedAgentPlatformRunListPayload,
+} from "themis-contracts/managed-agent-platform-collaboration";
 import { readPlatformAsset } from "./platform-assets.js";
 import { createInMemoryPlatformGovernanceService, type PlatformGovernanceService } from "./platform-governance-service.js";
 import { createInMemoryPlatformNodeService, type PlatformNodeService } from "./platform-node-service.js";
@@ -146,6 +150,19 @@ async function handlePlatformRequest(
     if (method === "POST" && url.pathname === "/api/platform/agents/waiting/list") {
       const payload = await readJsonBody<ManagedAgentPlatformWaitingQueueListPayload>(request);
       return writeJson(response, 200, options.governanceService.listWaitingQueue(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/runs/list") {
+      const payload = await readJsonBody<ManagedAgentPlatformRunListPayload>(request);
+      return writeJson(response, 200, options.workerRunService.listRuns(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/runs/detail") {
+      const payload = await readJsonBody<ManagedAgentPlatformRunDetailPayload>(request);
+      const result = options.workerRunService.getRunDetail(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/worker/runs/pull") {

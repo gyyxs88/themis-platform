@@ -476,6 +476,106 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
       },
     ]);
 
+    const runsList = await fetch(`${baseUrl}/api/platform/runs/list`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+      }),
+    });
+    assert.equal(runsList.status, 200);
+    const runsListPayload = await runsList.json() as {
+      runs?: Array<{ runId?: string; status?: string }>;
+    };
+    assert.deepEqual(runsListPayload.runs, [
+      {
+        runId: "run-alpha",
+        organizationId: "org-platform",
+        workItemId: "work-item-alpha",
+        nodeId: "node-alpha",
+        status: "created",
+        createdAt: "2026-04-14T09:35:00.000Z",
+        updatedAt: "2026-04-14T09:35:00.000Z",
+      },
+      {
+        runId: "run-gamma",
+        organizationId: "org-platform",
+        workItemId: "work-item-gamma",
+        nodeId: "node-alpha",
+        status: "waiting_action",
+        createdAt: "2026-04-14T09:25:00.000Z",
+        updatedAt: "2026-04-14T09:25:00.000Z",
+      },
+      {
+        runId: "run-beta",
+        organizationId: "org-platform",
+        workItemId: "work-item-beta",
+        nodeId: "node-alpha",
+        status: "waiting_action",
+        createdAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:20:00.000Z",
+      },
+    ]);
+
+    const runDetail = await fetch(`${baseUrl}/api/platform/runs/detail`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        runId: "run-beta",
+      }),
+    });
+    assert.equal(runDetail.status, 200);
+    const runDetailPayload = await runDetail.json() as {
+      run?: { runId?: string; status?: string };
+      workItem?: { workItemId?: string; status?: string };
+      targetAgent?: { agentId?: string; displayName?: string };
+    };
+    assert.deepEqual(runDetailPayload, {
+      organization: {
+        organizationId: "org-platform",
+        ownerPrincipalId: "principal-platform-owner",
+        displayName: "Platform Team",
+        slug: "platform-team",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+      run: {
+        runId: "run-beta",
+        organizationId: "org-platform",
+        workItemId: "work-item-beta",
+        nodeId: "node-alpha",
+        status: "waiting_action",
+        createdAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:20:00.000Z",
+      },
+      workItem: {
+        workItemId: "work-item-beta",
+        organizationId: "org-platform",
+        targetAgentId: "agent-beta",
+        sourceType: "human",
+        goal: "Review waiting human escalation.",
+        status: "waiting_human",
+        priority: "urgent",
+        waitingFor: "human",
+        createdAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:20:00.000Z",
+      },
+      targetAgent: {
+        agentId: "agent-beta",
+        organizationId: "org-platform",
+        displayName: "Agent Beta",
+        departmentRole: "Manager",
+        status: "active",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+    });
+
     const pull = await fetch(`${baseUrl}/api/platform/worker/runs/pull`, {
       method: "POST",
       headers: {

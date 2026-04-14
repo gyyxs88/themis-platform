@@ -82,7 +82,7 @@ test("initializePlatformSurface 会对节点治理动作调用对应平台接口
   });
 });
 
-test("initializePlatformSurface 会读取治理摘要与 waiting queue", async () => {
+test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent runs", async () => {
   const document = createDocumentStub();
   initializePlatformSurface({
     document,
@@ -134,6 +134,38 @@ test("initializePlatformSurface 会读取治理摘要与 waiting queue", async (
         });
       }
 
+      if (url === "/api/platform/runs/list") {
+        return createJsonResponse(200, {
+          runs: [
+            {
+              runId: "run-1",
+              workItemId: "work-item-1",
+              nodeId: "node-a",
+              status: "waiting_action",
+              updatedAt: "2026-04-14T10:10:00.000Z",
+            },
+          ],
+        });
+      }
+
+      if (url === "/api/platform/runs/detail") {
+        return createJsonResponse(200, {
+          run: {
+            runId: "run-1",
+            nodeId: "node-a",
+            status: "waiting_action",
+            updatedAt: "2026-04-14T10:10:00.000Z",
+          },
+          workItem: {
+            workItemId: "work-item-1",
+            goal: "确认是否允许继续发布",
+          },
+          targetAgent: {
+            displayName: "经理·曜",
+          },
+        });
+      }
+
       return createJsonResponse(404, {
         error: {
           message: "unexpected request",
@@ -160,6 +192,10 @@ test("initializePlatformSurface 会读取治理摘要与 waiting queue", async (
   assert.match(document.getElementById("platform-hotspots-list").innerHTML, /经理·曜/);
   assert.match(document.getElementById("platform-waiting-list").innerHTML, /确认是否允许继续发布/);
   assert.equal(document.getElementById("platform-waiting-empty").hidden, true);
+  assert.equal(document.getElementById("platform-runs-total").textContent, "1");
+  assert.match(document.getElementById("platform-runs-list").innerHTML, /run-1/);
+  assert.match(document.getElementById("platform-run-detail").innerHTML, /确认是否允许继续发布/);
+  assert.equal(document.getElementById("platform-runs-empty").hidden, true);
 });
 
 test("summarizeReclaimResult 会归一化 reclaim summary", () => {
@@ -223,6 +259,11 @@ function createDocumentStub() {
     "platform-hotspots-list",
     "platform-waiting-empty",
     "platform-waiting-list",
+    "platform-runs-status",
+    "platform-runs-total",
+    "platform-runs-empty",
+    "platform-runs-list",
+    "platform-run-detail",
   ];
 
   for (const id of ids) {

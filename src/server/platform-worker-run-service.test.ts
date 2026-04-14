@@ -92,6 +92,63 @@ test("createInMemoryPlatformWorkerRunService 会支持 pull / update / complete 
     }],
   });
 
+  assert.deepEqual(service.listRuns({
+    ownerPrincipalId: "principal-owner",
+  }), {
+    runs: [{
+      runId: "run-a",
+      organizationId: "org-platform",
+      workItemId: "work-item-a",
+      nodeId: "node-a",
+      status: "created",
+      createdAt: "2026-04-14T10:01:00.000Z",
+      updatedAt: "2026-04-14T10:01:00.000Z",
+    }],
+  });
+
+  assert.deepEqual(service.getRunDetail({
+    ownerPrincipalId: "principal-owner",
+    runId: "run-a",
+  }), {
+    organization: {
+      organizationId: "org-platform",
+      ownerPrincipalId: "principal-owner",
+      displayName: "Platform Team",
+      slug: "platform-team",
+      createdAt: "2026-04-14T10:00:00.000Z",
+      updatedAt: "2026-04-14T10:00:00.000Z",
+    },
+    run: {
+      runId: "run-a",
+      organizationId: "org-platform",
+      workItemId: "work-item-a",
+      nodeId: "node-a",
+      status: "created",
+      createdAt: "2026-04-14T10:01:00.000Z",
+      updatedAt: "2026-04-14T10:01:00.000Z",
+    },
+    workItem: {
+      workItemId: "work-item-a",
+      organizationId: "org-platform",
+      targetAgentId: "agent-a",
+      sourceType: "human",
+      goal: "Finish migration",
+      status: "queued",
+      priority: "normal",
+      createdAt: "2026-04-14T10:01:00.000Z",
+      updatedAt: "2026-04-14T10:01:00.000Z",
+    },
+    targetAgent: {
+      agentId: "agent-a",
+      organizationId: "org-platform",
+      displayName: "Agent A",
+      departmentRole: "Platform",
+      status: "active",
+      createdAt: "2026-04-14T10:00:00.000Z",
+      updatedAt: "2026-04-14T10:00:00.000Z",
+    },
+  });
+
   const pulled = service.pullAssignedRun({
     ownerPrincipalId: "principal-owner",
     nodeId: "node-a",

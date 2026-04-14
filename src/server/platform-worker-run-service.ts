@@ -1,4 +1,10 @@
 import type {
+  ManagedAgentPlatformRunDetailPayload,
+  ManagedAgentPlatformRunDetailResult,
+  ManagedAgentPlatformRunListPayload,
+  ManagedAgentPlatformRunListResult,
+} from "themis-contracts/managed-agent-platform-collaboration";
+import type {
   ManagedAgentPlatformWorkerAssignedRunResult,
   ManagedAgentPlatformWorkerPullPayload,
   ManagedAgentPlatformWorkerRunCompletePayload,
@@ -11,6 +17,8 @@ export interface PlatformWorkerRunService {
   pullAssignedRun(payload: ManagedAgentPlatformWorkerPullPayload): ManagedAgentPlatformWorkerAssignedRunResult | null;
   updateRunStatus(payload: ManagedAgentPlatformWorkerRunStatusPayload): ManagedAgentPlatformWorkerRunMutationResult | null;
   completeRun(payload: ManagedAgentPlatformWorkerRunCompletePayload): ManagedAgentPlatformWorkerRunMutationResult | null;
+  listRuns(payload: ManagedAgentPlatformRunListPayload): ManagedAgentPlatformRunListResult;
+  getRunDetail(payload: ManagedAgentPlatformRunDetailPayload): ManagedAgentPlatformRunDetailResult | null;
   listAssignedRuns(input: {
     ownerPrincipalId: string;
     organizationId?: string;
@@ -144,6 +152,32 @@ export function createInMemoryPlatformWorkerRunService(
       return buildRunMutationResult(assignedRun);
     },
 
+    listRuns(payload) {
+      const limit = Number.isFinite(payload.limit) ? Math.max(1, Number(payload.limit)) : 20;
+      const runs = Array.from(assignedRuns.values())
+        .filter((assignedRun) => matchesRunFilters(assignedRun, payload))
+        .sort((left, right) => compareAssignedRuns(right, left))
+        .slice(0, limit)
+        .map((assignedRun) => ({ ...assignedRun.run }));
+
+      return { runs };
+    },
+
+    getRunDetail(payload) {
+      const assignedRun = assignedRuns.get(payload.runId);
+
+      if (!assignedRun || assignedRun.organization.ownerPrincipalId !== payload.ownerPrincipalId) {
+        return null;
+      }
+
+      return {
+        organization: { ...assignedRun.organization },
+        run: { ...assignedRun.run },
+        workItem: { ...assignedRun.workItem },
+        targetAgent: { ...assignedRun.targetAgent },
+      };
+    },
+
     listAssignedRuns(input) {
       const ownerPrincipalId = input.ownerPrincipalId.trim();
       const organizationId = typeof input.organizationId === "string" ? input.organizationId.trim() : "";
@@ -246,4 +280,41 @@ function normalizeTimestamp(value: string | undefined, fallbackNow: () => string
   }
 
   return fallbackNow();
+}
+
+function matchesRunFilters(
+  assignedRun: ManagedAgentPlatformWorkerAssignedRunResult,
+  payload: ManagedAgentPlatformRunListPayload,
+) {
+  if (assignedRun.organization.ownerPrincipalId !== payload.ownerPrincipalId) {
+    return false;
+  }
+
+  if (payload.nodeId && assignedRun.node.nodeId !== payload.nodeId) {
+    return false;
+  }
+
+  if (payload.workItemId && assignedRun.workItem.workItemId !== payload.workItemId) {
+    return false;
+  }
+
+  if (payload.status && assignedRun.run.status !== payload.status) {
+    return false;
+  }
+
+  return true;
+}
+
+function compareAssignedRuns(
+  left: ManagedAgentPlatformWorkerAssignedRunResult,
+  right: ManagedAgentPlatformWorkerAssignedRunResult,
+) {
+  const leftUpdatedAt = Date.parse(left.run.updatedAt);
+  const rightUpdatedAt = Date.parse(right.run.updatedAt);
+
+  if (Number.isFinite(leftUpdatedAt) && Number.isFinite(rightUpdatedAt) && leftUpdatedAt !== rightUpdatedAt) {
+    return leftUpdatedAt - rightUpdatedAt;
+  }
+
+  return left.run.runId.localeCompare(right.run.runId, "en");
 }

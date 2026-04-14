@@ -90,6 +90,11 @@ export function initializePlatformSurface(options = {}) {
     hotspotsList: documentRef.getElementById("platform-hotspots-list"),
     waitingEmpty: documentRef.getElementById("platform-waiting-empty"),
     waitingList: documentRef.getElementById("platform-waiting-list"),
+    runsStatus: documentRef.getElementById("platform-runs-status"),
+    runsTotal: documentRef.getElementById("platform-runs-total"),
+    runsEmpty: documentRef.getElementById("platform-runs-empty"),
+    runsList: documentRef.getElementById("platform-runs-list"),
+    runDetail: documentRef.getElementById("platform-run-detail"),
   };
   const state = {
     loading: false,
@@ -107,6 +112,9 @@ export function initializePlatformSurface(options = {}) {
       managerHotspots: [],
     },
     waitingItems: [],
+    runs: [],
+    selectedRunId: "",
+    selectedRunDetail: null,
   };
 
   if (dom.ownerInput) {
@@ -121,6 +129,7 @@ export function initializePlatformSurface(options = {}) {
       : [];
     const hasNodes = state.nodes.length > 0;
     const hasWaitingItems = state.waitingItems.length > 0;
+    const hasRuns = state.runs.length > 0;
     const nodesStatusMessage = state.loadErrorMessage
       ? state.loadErrorMessage
       : state.loading
@@ -135,6 +144,13 @@ export function initializePlatformSurface(options = {}) {
         : state.ownerPrincipalId
           ? `当前共有 ${governanceSummary.total} 条待治理项，其中等人 ${governanceSummary.waitingHuman} 条、等 agent ${governanceSummary.waitingAgent} 条。`
           : "先填写 ownerPrincipalId，再查看当前平台下的治理摘要。";
+    const runsStatusMessage = state.loadErrorMessage
+      ? state.loadErrorMessage
+      : state.loading
+        ? "正在读取最近 runs 列表。"
+        : state.ownerPrincipalId
+          ? `当前已接入 ${state.runs.length} 条 recent runs。`
+          : "先填写 ownerPrincipalId，再查看当前平台 runs。";
 
     if (dom.sessionTitle) {
       dom.sessionTitle.textContent = state.tokenLabel ? `已登录：${state.tokenLabel}` : "未启用平台 Web 鉴权";
@@ -250,6 +266,37 @@ export function initializePlatformSurface(options = {}) {
         ? state.waitingItems.map((item) => renderWaitingItemCard(item)).join("")
         : "";
     }
+
+    if (dom.runsStatus) {
+      dom.runsStatus.textContent = runsStatusMessage;
+    }
+
+    if (dom.runsTotal) {
+      dom.runsTotal.textContent = String(state.runs.length);
+    }
+
+    if (dom.runsEmpty) {
+      dom.runsEmpty.hidden = hasRuns;
+      dom.runsEmpty.textContent = state.loadErrorMessage
+        ? "runs 读取失败，请先排查平台控制面。"
+        : state.ownerPrincipalId
+          ? "当前 ownerPrincipalId 下还没有 recent runs。"
+          : "先填写 ownerPrincipalId，再读取当前平台 runs。";
+    }
+
+    if (dom.runsList) {
+      dom.runsList.innerHTML = hasRuns
+        ? state.runs.map((run) => renderRunCard(run, state.selectedRunId)).join("")
+        : "";
+    }
+
+    if (dom.runDetail) {
+      dom.runDetail.innerHTML = state.selectedRunDetail
+        ? renderRunDetail(state.selectedRunDetail)
+        : hasRuns
+          ? '<p class="platform-inline-note">点击任意 run 卡片，查看当前 detail。</p>'
+          : "";
+    }
   };
 
   const loadSessionStatus = async () => {
@@ -284,6 +331,9 @@ export function initializePlatformSurface(options = {}) {
         managerHotspots: [],
       };
       state.waitingItems = [];
+      state.runs = [];
+      state.selectedRunId = "";
+      state.selectedRunDetail = null;
       render();
       return;
     }
@@ -294,7 +344,7 @@ export function initializePlatformSurface(options = {}) {
     render();
 
     try {
-      const [nodesPayload, governancePayload, waitingPayload] = await Promise.all([
+      const [nodesPayload, governancePayload, waitingPayload, runsPayload] = await Promise.all([
         requestPlatformJson(fetchFn, "/api/platform/nodes/list", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取节点列表失败。"),
@@ -304,6 +354,9 @@ export function initializePlatformSurface(options = {}) {
         requestPlatformJson(fetchFn, "/api/platform/agents/waiting/list", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取 waiting queue 失败。"),
+        requestPlatformJson(fetchFn, "/api/platform/runs/list", {
+          ownerPrincipalId: state.ownerPrincipalId,
+        }, "读取 recent runs 失败。"),
       ]);
 
       state.nodes = Array.isArray(nodesPayload?.nodes) ? nodesPayload.nodes : [];
@@ -312,6 +365,18 @@ export function initializePlatformSurface(options = {}) {
         managerHotspots: Array.isArray(governancePayload?.managerHotspots) ? governancePayload.managerHotspots : [],
       };
       state.waitingItems = Array.isArray(waitingPayload?.items) ? waitingPayload.items : [];
+      state.runs = Array.isArray(runsPayload?.runs) ? runsPayload.runs : [];
+
+      if (!state.runs.some((run) => run?.runId === state.selectedRunId)) {
+        state.selectedRunId = typeof state.runs[0]?.runId === "string" ? state.runs[0].runId : "";
+      }
+
+      state.selectedRunDetail = state.selectedRunId
+        ? await requestPlatformJson(fetchFn, "/api/platform/runs/detail", {
+          ownerPrincipalId: state.ownerPrincipalId,
+          runId: state.selectedRunId,
+        }, "读取 run detail 失败。")
+        : null;
     } catch (error) {
       state.nodes = [];
       state.governanceOverview = {
@@ -319,9 +384,36 @@ export function initializePlatformSurface(options = {}) {
         managerHotspots: [],
       };
       state.waitingItems = [];
+      state.runs = [];
+      state.selectedRunId = "";
+      state.selectedRunDetail = null;
       state.loadErrorMessage = error instanceof Error ? error.message : "读取平台控制面失败。";
     } finally {
       state.loading = false;
+      render();
+    }
+  };
+
+  const loadRunDetail = async (runId) => {
+    const normalizedRunId = typeof runId === "string" ? runId.trim() : "";
+
+    if (!normalizedRunId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.selectedRunId = normalizedRunId;
+    render();
+
+    try {
+      state.selectedRunDetail = await requestPlatformJson(fetchFn, "/api/platform/runs/detail", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        runId: normalizedRunId,
+      }, "读取 run detail 失败。");
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.selectedRunDetail = null;
+      state.loadErrorMessage = error instanceof Error ? error.message : "读取 run detail 失败。";
+    } finally {
       render();
     }
   };
@@ -395,6 +487,22 @@ export function initializePlatformSurface(options = {}) {
     }
   });
 
+  dom.runsList?.addEventListener("click", (event) => {
+    const runCard = event.target instanceof HTMLElement
+      ? event.target.closest("[data-platform-run-id]")
+      : null;
+
+    if (!runCard) {
+      return;
+    }
+
+    const runId = runCard.getAttribute("data-platform-run-id");
+
+    if (runId) {
+      void loadRunDetail(runId);
+    }
+  });
+
   void (async () => {
     await loadSessionStatus();
     render();
@@ -406,6 +514,7 @@ export function initializePlatformSurface(options = {}) {
   return {
     loadNodes: loadPlatformData,
     loadPlatformData,
+    loadRunDetail,
     updateNodeStatus,
     render,
   };
@@ -495,6 +604,49 @@ function renderWaitingItemCard(item) {
   </article>`;
 }
 
+function renderRunCard(run, selectedRunId) {
+  const chips = [
+    run?.status ? `状态 ${resolveRunStatusLabel(run.status)}` : "",
+    run?.nodeId ? `节点 ${run.nodeId}` : "",
+    run?.workItemId ? `工作项 ${run.workItemId}` : "",
+  ].filter(Boolean);
+  const selected = typeof run?.runId === "string" && run.runId === selectedRunId;
+
+  return `<article class="platform-run-card" data-platform-run-id="${escapeHtml(run?.runId || "")}" data-selected="${selected ? "true" : "false"}">
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(run?.runId || "未命名 run")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">最近更新时间：${escapeHtml(formatTimestamp(run?.updatedAt))}</p>
+  </article>`;
+}
+
+function renderRunDetail(detail) {
+  const chips = [
+    detail?.run?.status ? `状态 ${resolveRunStatusLabel(detail.run.status)}` : "",
+    detail?.run?.nodeId ? `节点 ${detail.run.nodeId}` : "",
+    detail?.targetAgent?.displayName ? `目标 ${detail.targetAgent.displayName}` : "",
+    detail?.workItem?.workItemId ? `工作项 ${detail.workItem.workItemId}` : "",
+  ].filter(Boolean);
+
+  return `<div>
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(detail?.run?.runId || "未命名 run")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">当前 goal：${escapeHtml(detail?.workItem?.goal || "暂无 goal")}</p>
+    <p class="platform-inline-note">最近更新时间：${escapeHtml(formatTimestamp(detail?.run?.updatedAt))}</p>
+  </div>`;
+}
+
 function resolveNodeActions(node) {
   switch (node?.status) {
     case "online":
@@ -561,6 +713,29 @@ function resolvePriorityLabel(priority) {
       return "低";
     default:
       return "";
+  }
+}
+
+function resolveRunStatusLabel(status) {
+  switch (status) {
+    case "created":
+      return "已创建";
+    case "starting":
+      return "启动中";
+    case "running":
+      return "运行中";
+    case "waiting_action":
+      return "等待动作";
+    case "completed":
+      return "已完成";
+    case "failed":
+      return "失败";
+    case "cancelled":
+      return "已取消";
+    case "interrupted":
+      return "中断";
+    default:
+      return typeof status === "string" ? status : "";
   }
 }
 
