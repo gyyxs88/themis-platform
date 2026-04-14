@@ -134,6 +134,61 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
         });
       }
 
+      if (url === "/api/platform/agents/collaboration-dashboard") {
+        return createJsonResponse(200, {
+          summary: {
+            total: 1,
+            waitingHuman: 1,
+            waitingAgent: 0,
+            attentionCount: 1,
+          },
+          parents: [
+            {
+              parentWorkItemId: "parent-1",
+              displayName: "平台父任务 Alpha",
+              items: [
+                {
+                  workItemId: "work-item-1",
+                  goal: "确认是否允许继续发布",
+                  status: "waiting_human",
+                  priority: "urgent",
+                  targetAgentId: "agent-manager",
+                  sourceType: "human",
+                  updatedAt: "2026-04-14T10:10:00.000Z",
+                },
+              ],
+            },
+          ],
+        });
+      }
+
+      if (url === "/api/platform/agents/handoffs/list") {
+        return createJsonResponse(200, {
+          agent: {
+            agentId: "agent-manager",
+            displayName: "经理·曜",
+          },
+          handoffs: [
+            {
+              handoffId: "handoff-1",
+              workItemId: "work-item-1",
+              summary: "平台经理已补齐上下文并交接给执行 agent。",
+              blockers: ["等待人工确认"],
+              recommendedNextActions: ["确认边界", "恢复执行"],
+            },
+          ],
+          timeline: [
+            {
+              entryId: "timeline-1",
+              kind: "handoff",
+              title: "平台经理交接",
+              summary: "平台经理已补齐上下文并交接给执行 agent。",
+              updatedAt: "2026-04-14T10:09:00.000Z",
+            },
+          ],
+        });
+      }
+
       if (url === "/api/platform/runs/list") {
         return createJsonResponse(200, {
           runs: [
@@ -192,6 +247,12 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
   assert.match(document.getElementById("platform-hotspots-list").innerHTML, /经理·曜/);
   assert.match(document.getElementById("platform-waiting-list").innerHTML, /确认是否允许继续发布/);
   assert.equal(document.getElementById("platform-waiting-empty").hidden, true);
+  assert.equal(document.getElementById("platform-collaboration-total").textContent, "1");
+  assert.equal(document.getElementById("platform-collaboration-handoffs-total").textContent, "1");
+  assert.match(document.getElementById("platform-collaboration-list").innerHTML, /平台父任务 Alpha/);
+  assert.match(document.getElementById("platform-handoffs-list").innerHTML, /平台经理已补齐上下文并交接给执行 agent/);
+  assert.equal(document.getElementById("platform-collaboration-empty").hidden, true);
+  assert.equal(document.getElementById("platform-handoffs-empty").hidden, true);
   assert.equal(document.getElementById("platform-runs-total").textContent, "1");
   assert.match(document.getElementById("platform-runs-list").innerHTML, /run-1/);
   assert.match(document.getElementById("platform-run-detail").innerHTML, /确认是否允许继续发布/);
@@ -259,6 +320,14 @@ function createDocumentStub() {
     "platform-hotspots-list",
     "platform-waiting-empty",
     "platform-waiting-list",
+    "platform-collaboration-status",
+    "platform-collaboration-total",
+    "platform-collaboration-handoffs-total",
+    "platform-collaboration-empty",
+    "platform-collaboration-list",
+    "platform-handoffs-status",
+    "platform-handoffs-empty",
+    "platform-handoffs-list",
     "platform-runs-status",
     "platform-runs-total",
     "platform-runs-empty",

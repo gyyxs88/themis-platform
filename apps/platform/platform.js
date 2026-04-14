@@ -90,6 +90,14 @@ export function initializePlatformSurface(options = {}) {
     hotspotsList: documentRef.getElementById("platform-hotspots-list"),
     waitingEmpty: documentRef.getElementById("platform-waiting-empty"),
     waitingList: documentRef.getElementById("platform-waiting-list"),
+    collaborationStatus: documentRef.getElementById("platform-collaboration-status"),
+    collaborationTotal: documentRef.getElementById("platform-collaboration-total"),
+    collaborationHandoffsTotal: documentRef.getElementById("platform-collaboration-handoffs-total"),
+    collaborationEmpty: documentRef.getElementById("platform-collaboration-empty"),
+    collaborationList: documentRef.getElementById("platform-collaboration-list"),
+    handoffsStatus: documentRef.getElementById("platform-handoffs-status"),
+    handoffsEmpty: documentRef.getElementById("platform-handoffs-empty"),
+    handoffsList: documentRef.getElementById("platform-handoffs-list"),
     runsStatus: documentRef.getElementById("platform-runs-status"),
     runsTotal: documentRef.getElementById("platform-runs-total"),
     runsEmpty: documentRef.getElementById("platform-runs-empty"),
@@ -112,6 +120,12 @@ export function initializePlatformSurface(options = {}) {
       managerHotspots: [],
     },
     waitingItems: [],
+    collaborationDashboard: {
+      summary: { ...EMPTY_GOVERNANCE_SUMMARY },
+      parents: [],
+    },
+    selectedHandoffAgentId: "",
+    handoffView: null,
     runs: [],
     selectedRunId: "",
     selectedRunDetail: null,
@@ -127,8 +141,16 @@ export function initializePlatformSurface(options = {}) {
     const managerHotspots = Array.isArray(state.governanceOverview?.managerHotspots)
       ? state.governanceOverview.managerHotspots
       : [];
+    const collaborationParents = Array.isArray(state.collaborationDashboard?.parents)
+      ? state.collaborationDashboard.parents
+      : [];
+    const handoffItems = Array.isArray(state.handoffView?.handoffs)
+      ? state.handoffView.handoffs
+      : [];
     const hasNodes = state.nodes.length > 0;
     const hasWaitingItems = state.waitingItems.length > 0;
+    const hasCollaborationParents = collaborationParents.length > 0;
+    const hasHandoffs = handoffItems.length > 0;
     const hasRuns = state.runs.length > 0;
     const nodesStatusMessage = state.loadErrorMessage
       ? state.loadErrorMessage
@@ -151,6 +173,23 @@ export function initializePlatformSurface(options = {}) {
         : state.ownerPrincipalId
           ? `当前已接入 ${state.runs.length} 条 recent runs。`
           : "先填写 ownerPrincipalId，再查看当前平台 runs。";
+    const handoffAgentLabel = state.handoffView?.agent?.displayName || state.selectedHandoffAgentId;
+    const collaborationStatusMessage = state.loadErrorMessage
+      ? state.loadErrorMessage
+      : state.loading
+        ? "正在整理父任务协作分组。"
+        : state.ownerPrincipalId
+          ? `当前共有 ${collaborationParents.length} 个父任务分组。`
+          : "先填写 ownerPrincipalId，再查看当前平台父任务协作分组。";
+    const handoffsStatusMessage = state.loadErrorMessage
+      ? state.loadErrorMessage
+      : state.loading
+        ? "正在读取交接时间线。"
+        : handoffAgentLabel
+          ? `当前正在查看 ${handoffAgentLabel} 的 ${handoffItems.length} 条 handoff。`
+          : state.ownerPrincipalId
+            ? "当前还没有可查看的 handoff agent。"
+            : "先填写 ownerPrincipalId，再查看当前平台 handoff 时间线。";
 
     if (dom.sessionTitle) {
       dom.sessionTitle.textContent = state.tokenLabel ? `已登录：${state.tokenLabel}` : "未启用平台 Web 鉴权";
@@ -267,6 +306,52 @@ export function initializePlatformSurface(options = {}) {
         : "";
     }
 
+    if (dom.collaborationStatus) {
+      dom.collaborationStatus.textContent = collaborationStatusMessage;
+    }
+
+    if (dom.collaborationTotal) {
+      dom.collaborationTotal.textContent = String(collaborationParents.length);
+    }
+
+    if (dom.collaborationHandoffsTotal) {
+      dom.collaborationHandoffsTotal.textContent = String(handoffItems.length);
+    }
+
+    if (dom.collaborationEmpty) {
+      dom.collaborationEmpty.hidden = hasCollaborationParents;
+      dom.collaborationEmpty.textContent = state.loadErrorMessage
+        ? "父任务协作分组读取失败，请先排查平台控制面。"
+        : state.ownerPrincipalId
+          ? "当前 ownerPrincipalId 下还没有协作分组。"
+          : "先填写 ownerPrincipalId，再读取当前平台父任务协作分组。";
+    }
+
+    if (dom.collaborationList) {
+      dom.collaborationList.innerHTML = hasCollaborationParents
+        ? collaborationParents.map((parent) => renderCollaborationParentCard(parent, state.selectedHandoffAgentId)).join("")
+        : "";
+    }
+
+    if (dom.handoffsStatus) {
+      dom.handoffsStatus.textContent = handoffsStatusMessage;
+    }
+
+    if (dom.handoffsEmpty) {
+      dom.handoffsEmpty.hidden = hasHandoffs;
+      dom.handoffsEmpty.textContent = state.loadErrorMessage
+        ? "handoff 时间线读取失败，请先排查平台控制面。"
+        : handoffAgentLabel
+          ? `${handoffAgentLabel} 当前还没有可显示的 handoff。`
+          : "选择一个父任务分组后，这里会显示当前 agent 的 handoff 时间线。";
+    }
+
+    if (dom.handoffsList) {
+      dom.handoffsList.innerHTML = hasHandoffs
+        ? renderHandoffList(state.handoffView)
+        : "";
+    }
+
     if (dom.runsStatus) {
       dom.runsStatus.textContent = runsStatusMessage;
     }
@@ -331,6 +416,12 @@ export function initializePlatformSurface(options = {}) {
         managerHotspots: [],
       };
       state.waitingItems = [];
+      state.collaborationDashboard = {
+        summary: { ...EMPTY_GOVERNANCE_SUMMARY },
+        parents: [],
+      };
+      state.selectedHandoffAgentId = "";
+      state.handoffView = null;
       state.runs = [];
       state.selectedRunId = "";
       state.selectedRunDetail = null;
@@ -344,7 +435,7 @@ export function initializePlatformSurface(options = {}) {
     render();
 
     try {
-      const [nodesPayload, governancePayload, waitingPayload, runsPayload] = await Promise.all([
+      const [nodesPayload, governancePayload, waitingPayload, collaborationPayload, runsPayload] = await Promise.all([
         requestPlatformJson(fetchFn, "/api/platform/nodes/list", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取节点列表失败。"),
@@ -354,6 +445,9 @@ export function initializePlatformSurface(options = {}) {
         requestPlatformJson(fetchFn, "/api/platform/agents/waiting/list", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取 waiting queue 失败。"),
+        requestPlatformJson(fetchFn, "/api/platform/agents/collaboration-dashboard", {
+          ownerPrincipalId: state.ownerPrincipalId,
+        }, "读取父任务协作分组失败。"),
         requestPlatformJson(fetchFn, "/api/platform/runs/list", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取 recent runs 失败。"),
@@ -365,7 +459,26 @@ export function initializePlatformSurface(options = {}) {
         managerHotspots: Array.isArray(governancePayload?.managerHotspots) ? governancePayload.managerHotspots : [],
       };
       state.waitingItems = Array.isArray(waitingPayload?.items) ? waitingPayload.items : [];
+      state.collaborationDashboard = {
+        summary: normalizeGovernanceSummary(collaborationPayload?.summary),
+        parents: Array.isArray(collaborationPayload?.parents) ? collaborationPayload.parents : [],
+      };
       state.runs = Array.isArray(runsPayload?.runs) ? runsPayload.runs : [];
+
+      const availableHandoffAgentIds = state.collaborationDashboard.parents
+        .map((parent) => normalizeOwnerPrincipalId(parent?.items?.[0]?.targetAgentId))
+        .filter(Boolean);
+
+      if (!availableHandoffAgentIds.includes(state.selectedHandoffAgentId)) {
+        state.selectedHandoffAgentId = availableHandoffAgentIds[0] ?? "";
+      }
+
+      state.handoffView = state.selectedHandoffAgentId
+        ? await requestPlatformJson(fetchFn, "/api/platform/agents/handoffs/list", {
+          ownerPrincipalId: state.ownerPrincipalId,
+          agentId: state.selectedHandoffAgentId,
+        }, "读取 handoff 时间线失败。")
+        : null;
 
       if (!state.runs.some((run) => run?.runId === state.selectedRunId)) {
         state.selectedRunId = typeof state.runs[0]?.runId === "string" ? state.runs[0].runId : "";
@@ -384,6 +497,12 @@ export function initializePlatformSurface(options = {}) {
         managerHotspots: [],
       };
       state.waitingItems = [];
+      state.collaborationDashboard = {
+        summary: { ...EMPTY_GOVERNANCE_SUMMARY },
+        parents: [],
+      };
+      state.selectedHandoffAgentId = "";
+      state.handoffView = null;
       state.runs = [];
       state.selectedRunId = "";
       state.selectedRunDetail = null;
@@ -413,6 +532,30 @@ export function initializePlatformSurface(options = {}) {
     } catch (error) {
       state.selectedRunDetail = null;
       state.loadErrorMessage = error instanceof Error ? error.message : "读取 run detail 失败。";
+    } finally {
+      render();
+    }
+  };
+
+  const loadAgentHandoffs = async (agentId) => {
+    const normalizedAgentId = normalizeOwnerPrincipalId(agentId);
+
+    if (!normalizedAgentId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.selectedHandoffAgentId = normalizedAgentId;
+    render();
+
+    try {
+      state.handoffView = await requestPlatformJson(fetchFn, "/api/platform/agents/handoffs/list", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        agentId: normalizedAgentId,
+      }, "读取 handoff 时间线失败。");
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.handoffView = null;
+      state.loadErrorMessage = error instanceof Error ? error.message : "读取 handoff 时间线失败。";
     } finally {
       render();
     }
@@ -487,6 +630,22 @@ export function initializePlatformSurface(options = {}) {
     }
   });
 
+  dom.collaborationList?.addEventListener("click", (event) => {
+    const parentCard = event.target instanceof HTMLElement
+      ? event.target.closest("[data-platform-handoff-agent-id]")
+      : null;
+
+    if (!parentCard) {
+      return;
+    }
+
+    const agentId = parentCard.getAttribute("data-platform-handoff-agent-id");
+
+    if (agentId) {
+      void loadAgentHandoffs(agentId);
+    }
+  });
+
   dom.runsList?.addEventListener("click", (event) => {
     const runCard = event.target instanceof HTMLElement
       ? event.target.closest("[data-platform-run-id]")
@@ -514,6 +673,7 @@ export function initializePlatformSurface(options = {}) {
   return {
     loadNodes: loadPlatformData,
     loadPlatformData,
+    loadAgentHandoffs,
     loadRunDetail,
     updateNodeStatus,
     render,
@@ -601,6 +761,104 @@ function renderWaitingItemCard(item) {
     <p class="platform-inline-note">
       最近更新时间：${escapeHtml(formatTimestamp(item?.updatedAt))}
     </p>
+  </article>`;
+}
+
+function renderCollaborationParentCard(parent, selectedHandoffAgentId) {
+  const items = Array.isArray(parent?.items) ? parent.items : [];
+  const leadAgentId = normalizeOwnerPrincipalId(items[0]?.targetAgentId);
+  const distinctAgents = new Set(items.map((item) => normalizeOwnerPrincipalId(item?.targetAgentId)).filter(Boolean));
+  const waitingHumanCount = items.filter((item) => item?.status === "waiting_human").length;
+  const waitingAgentCount = items.filter((item) => item?.status === "waiting_agent").length;
+  const chips = [
+    `子项 ${items.length}`,
+    waitingHumanCount > 0 ? `等人 ${waitingHumanCount}` : "",
+    waitingAgentCount > 0 ? `等 agent ${waitingAgentCount}` : "",
+    distinctAgents.size > 0 ? `涉及 agent ${distinctAgents.size}` : "",
+  ].filter(Boolean);
+  const previewGoals = items
+    .slice(0, 2)
+    .map((item) => escapeHtml(item?.goal || item?.workItemId || "未命名子项"))
+    .join(" / ");
+  const selected = leadAgentId && leadAgentId === selectedHandoffAgentId;
+
+  return `<article
+    class="platform-collaboration-card"
+    data-platform-handoff-agent-id="${escapeHtml(leadAgentId)}"
+    data-selected="${selected ? "true" : "false"}"
+  >
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(parent?.displayName || parent?.parentWorkItemId || "未命名父任务")}</h3>
+        <div class="platform-node-meta">
+          <span class="platform-chip">${escapeHtml(parent?.parentWorkItemId || "未知 parentWorkItemId")}</span>
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">子项预览：${previewGoals || "暂无子项"}</p>
+  </article>`;
+}
+
+function renderHandoffList(view) {
+  const handoffs = Array.isArray(view?.handoffs) ? view.handoffs : [];
+  const timeline = Array.isArray(view?.timeline) ? view.timeline : [];
+  const parts = [];
+
+  if (handoffs.length > 0) {
+    parts.push(handoffs.map((handoff) => renderHandoffCard(handoff)).join(""));
+  }
+
+  if (timeline.length > 0) {
+    parts.push(timeline.map((entry) => renderTimelineEntryCard(entry)).join(""));
+  }
+
+  return parts.join("");
+}
+
+function renderHandoffCard(handoff) {
+  const blockers = Array.isArray(handoff?.blockers) ? handoff.blockers : [];
+  const nextActions = Array.isArray(handoff?.recommendedNextActions) ? handoff.recommendedNextActions : [];
+  const chips = [
+    handoff?.handoffId ? `handoff ${handoff.handoffId}` : "",
+    handoff?.counterpartyDisplayName ? `对端 ${handoff.counterpartyDisplayName}` : "",
+    handoff?.workItemId ? `工作项 ${handoff.workItemId}` : "",
+  ].filter(Boolean);
+  const blockerLine = blockers.length > 0 ? `阻塞：${blockers.join(" / ")}` : "阻塞：暂无";
+  const nextActionLine = nextActions.length > 0 ? `建议动作：${nextActions.join(" / ")}` : "建议动作：暂无";
+
+  return `<article class="platform-handoff-card">
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(handoff?.summary || handoff?.handoffId || "未命名交接")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">${escapeHtml(blockerLine)}</p>
+    <p class="platform-inline-note">${escapeHtml(nextActionLine)}</p>
+  </article>`;
+}
+
+function renderTimelineEntryCard(entry) {
+  const chips = [
+    entry?.kind ? `类型 ${entry.kind}` : "",
+    entry?.counterpartyDisplayName ? `对端 ${entry.counterpartyDisplayName}` : "",
+    entry?.workItemId ? `工作项 ${entry.workItemId}` : "",
+  ].filter(Boolean);
+
+  return `<article class="platform-handoff-card">
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(entry?.title || entry?.summary || entry?.entryId || "未命名时间线")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">${escapeHtml(entry?.summary || "暂无摘要")}</p>
+    <p class="platform-inline-note">最近更新时间：${escapeHtml(formatTimestamp(entry?.updatedAt))}</p>
   </article>`;
 }
 

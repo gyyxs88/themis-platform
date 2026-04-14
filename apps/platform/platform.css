@@ -201,6 +201,10 @@ input {
   grid-template-columns: minmax(0, 220px);
 }
 
+.platform-summary-grid--compact-two {
+  grid-template-columns: repeat(2, minmax(0, 220px));
+}
+
 .platform-summary-card {
   padding: 18px 20px;
   background: var(--platform-card);
@@ -227,6 +231,8 @@ input {
 
 .platform-hotspots-list,
 .platform-waiting-list,
+.platform-collaboration-list,
+.platform-handoffs-list,
 .platform-runs-list {
   display: grid;
   gap: 12px;
@@ -240,6 +246,8 @@ input {
 .platform-node-card,
 .platform-hotspot-card,
 .platform-waiting-card,
+.platform-collaboration-card,
+.platform-handoff-card,
 .platform-run-card,
 .platform-run-detail {
   padding: 18px 20px;
@@ -296,10 +304,21 @@ input {
 
 .platform-run-card:hover,
 .platform-run-card:focus-visible,
+.platform-collaboration-card:hover,
+.platform-collaboration-card:focus-visible,
+.platform-collaboration-card[data-selected="true"],
 .platform-run-card[data-selected="true"] {
   transform: translateY(-1px);
   border-color: rgba(35, 83, 71, 0.28);
   box-shadow: 0 16px 28px rgba(35, 83, 71, 0.12);
+}
+
+.platform-collaboration-card {
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
 }
 
 .platform-run-detail {
@@ -344,6 +363,10 @@ input {
   .platform-summary-grid--compact {
     grid-template-columns: repeat(1, minmax(0, 1fr));
   }
+
+  .platform-summary-grid--compact-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -364,6 +387,10 @@ input {
   }
 
   .platform-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-summary-grid--compact-two {
     grid-template-columns: 1fr;
   }
 }

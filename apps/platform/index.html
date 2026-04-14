@@ -150,6 +150,45 @@
         <section class="platform-panel">
           <div class="platform-panel-head">
             <div>
+              <p class="platform-panel-kicker">Collaboration</p>
+              <h2>Parent Tasks & Handoffs</h2>
+            </div>
+            <p class="platform-panel-copy">
+              当前开始由独立 `themis-platform` 页面承接父任务协作分组与 handoff 时间线，先补平台值班最常看的只读视角。
+            </p>
+          </div>
+
+          <div class="platform-summary-grid platform-summary-grid--compact-two">
+            <article class="platform-summary-card">
+              <span>父任务分组</span>
+              <strong id="platform-collaboration-total">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>当前 handoffs</span>
+              <strong id="platform-collaboration-handoffs-total">0</strong>
+            </article>
+          </div>
+
+          <p id="platform-collaboration-status" class="platform-inline-note">
+            还没有读取协作分组。
+          </p>
+          <p id="platform-collaboration-empty" class="platform-empty-state">
+            先填写 ownerPrincipalId，再读取当前平台父任务协作分组。
+          </p>
+          <div id="platform-collaboration-list" class="platform-collaboration-list"></div>
+
+          <p id="platform-handoffs-status" class="platform-inline-note">
+            还没有读取交接时间线。
+          </p>
+          <p id="platform-handoffs-empty" class="platform-empty-state">
+            选择一个父任务分组后，这里会显示当前 agent 的 handoff 时间线。
+          </p>
+          <div id="platform-handoffs-list" class="platform-handoffs-list"></div>
+        </section>
+
+        <section class="platform-panel">
+          <div class="platform-panel-head">
+            <div>
               <p class="platform-panel-kicker">Runs</p>
               <h2>Recent Runs</h2>
             </div>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
 import { createPlatformApp } from "./platform-app.js";
+import { createInMemoryPlatformCollaborationService } from "./platform-collaboration-service.js";
 import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformWorkerRunService } from "./platform-worker-run-service.js";
 
@@ -208,9 +209,50 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
       },
     }],
   });
+  const collaborationService = createInMemoryPlatformCollaborationService({
+    workerRunService,
+    now: () => "2026-04-14T09:40:00.000Z",
+    parentSeeds: [{
+      ownerPrincipalId: "principal-platform-owner",
+      organizationId: "org-platform",
+      parentWorkItemId: "parent-work-item-platform",
+      displayName: "平台父任务",
+      childWorkItemIds: ["work-item-beta", "work-item-gamma"],
+    }],
+    handoffSeeds: [{
+      ownerPrincipalId: "principal-platform-owner",
+      organizationId: "org-platform",
+      agentId: "agent-beta",
+      handoffs: [{
+        handoffId: "handoff-beta",
+        fromAgentId: "agent-alpha",
+        toAgentId: "agent-beta",
+        workItemId: "work-item-beta",
+        summary: "平台经理已补齐上下文并交接给执行 agent。",
+        blockers: ["等待人工确认"],
+        recommendedNextActions: ["确认执行边界", "恢复执行"],
+        attachedArtifacts: ["artifact-platform-beta"],
+        createdAt: "2026-04-14T09:18:00.000Z",
+        updatedAt: "2026-04-14T09:18:00.000Z",
+      }],
+      timeline: [{
+        entryId: "timeline-beta",
+        kind: "handoff",
+        title: "平台经理交接",
+        summary: "平台经理已补齐上下文并交接给执行 agent。",
+        workItemId: "work-item-beta",
+        handoffId: "handoff-beta",
+        counterpartyAgentId: "agent-alpha",
+        counterpartyDisplayName: "Agent Alpha",
+        createdAt: "2026-04-14T09:18:00.000Z",
+        updatedAt: "2026-04-14T09:18:00.000Z",
+      }],
+    }],
+  });
   const server = createPlatformApp({
     nodeService,
     workerRunService,
+    collaborationService,
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -475,6 +517,82 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
         updatedAt: "2026-04-14T09:25:00.000Z",
       },
     ]);
+
+    const collaborationDashboard = await fetch(`${baseUrl}/api/platform/agents/collaboration-dashboard`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+      }),
+    });
+    assert.equal(collaborationDashboard.status, 200);
+    const collaborationDashboardPayload = await collaborationDashboard.json() as {
+      summary?: { total?: number; waitingHuman?: number; waitingAgent?: number; attentionCount?: number };
+      parents?: Array<{ parentWorkItemId?: string; displayName?: string; items?: Array<{ workItemId?: string }> }>;
+    };
+    assert.deepEqual(collaborationDashboardPayload.summary, {
+      total: 2,
+      waitingHuman: 1,
+      waitingAgent: 1,
+      attentionCount: 1,
+    });
+    assert.deepEqual(collaborationDashboardPayload.parents, [
+      {
+        parentWorkItemId: "parent-work-item-platform",
+        displayName: "平台父任务",
+        items: [
+          {
+            workItemId: "work-item-beta",
+            organizationId: "org-platform",
+            targetAgentId: "agent-beta",
+            sourceType: "human",
+            goal: "Review waiting human escalation.",
+            status: "waiting_human",
+            priority: "urgent",
+            waitingFor: "human",
+            createdAt: "2026-04-14T09:20:00.000Z",
+            updatedAt: "2026-04-14T09:20:00.000Z",
+          },
+          {
+            workItemId: "work-item-gamma",
+            organizationId: "org-platform",
+            targetAgentId: "agent-gamma",
+            sourceType: "agent",
+            goal: "Wait for downstream agent confirmation.",
+            status: "waiting_agent",
+            priority: "normal",
+            waitingFor: "agent",
+            createdAt: "2026-04-14T09:25:00.000Z",
+            updatedAt: "2026-04-14T09:25:00.000Z",
+          },
+        ],
+      },
+    ]);
+
+    const handoffList = await fetch(`${baseUrl}/api/platform/agents/handoffs/list`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agentId: "agent-beta",
+      }),
+    });
+    assert.equal(handoffList.status, 200);
+    const handoffListPayload = await handoffList.json() as {
+      agent?: { agentId?: string; displayName?: string };
+      handoffs?: Array<{ handoffId?: string; summary?: string }>;
+      timeline?: Array<{ kind?: string; title?: string }>;
+    };
+    assert.equal(handoffListPayload.agent?.agentId, "agent-beta");
+    assert.equal(handoffListPayload.agent?.displayName, "Agent Beta");
+    assert.equal(handoffListPayload.handoffs?.[0]?.handoffId, "handoff-beta");
+    assert.equal(handoffListPayload.handoffs?.[0]?.summary, "平台经理已补齐上下文并交接给执行 agent。");
+    assert.equal(handoffListPayload.timeline?.[0]?.kind, "handoff");
+    assert.equal(handoffListPayload.timeline?.[0]?.title, "平台经理交接");
 
     const runsList = await fetch(`${baseUrl}/api/platform/runs/list`, {
       method: "POST",

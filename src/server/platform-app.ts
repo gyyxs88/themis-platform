@@ -11,14 +11,20 @@ import type {
   ManagedAgentPlatformWorkerRunStatusPayload,
 } from "themis-contracts/managed-agent-platform-worker";
 import type {
+  ManagedAgentPlatformCollaborationDashboardPayload,
   ManagedAgentPlatformGovernanceFiltersPayload,
   ManagedAgentPlatformWaitingQueueListPayload,
 } from "themis-contracts/managed-agent-platform-agents";
 import type {
+  ManagedAgentPlatformHandoffListPayload,
   ManagedAgentPlatformRunDetailPayload,
   ManagedAgentPlatformRunListPayload,
 } from "themis-contracts/managed-agent-platform-collaboration";
 import { readPlatformAsset } from "./platform-assets.js";
+import {
+  createInMemoryPlatformCollaborationService,
+  type PlatformCollaborationService,
+} from "./platform-collaboration-service.js";
 import { createInMemoryPlatformGovernanceService, type PlatformGovernanceService } from "./platform-governance-service.js";
 import { createInMemoryPlatformNodeService, type PlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformWorkerRunService, type PlatformWorkerRunService } from "./platform-worker-run-service.js";
@@ -28,6 +34,7 @@ export interface PlatformAppOptions {
   nodeService?: PlatformNodeService;
   workerRunService?: PlatformWorkerRunService;
   governanceService?: PlatformGovernanceService;
+  collaborationService?: PlatformCollaborationService;
   webAuthTokenLabel?: string;
 }
 
@@ -40,6 +47,9 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
   const governanceService = options.governanceService ?? createInMemoryPlatformGovernanceService({
     workerRunService,
   });
+  const collaborationService = options.collaborationService ?? createInMemoryPlatformCollaborationService({
+    workerRunService,
+  });
   const webAuthTokenLabel = options.webAuthTokenLabel ?? "";
 
   return createServer((request, response) => {
@@ -48,6 +58,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       nodeService,
       workerRunService,
       governanceService,
+      collaborationService,
       webAuthTokenLabel,
     });
   });
@@ -58,6 +69,7 @@ interface HandlePlatformRequestOptions {
   nodeService: PlatformNodeService;
   workerRunService: PlatformWorkerRunService;
   governanceService: PlatformGovernanceService;
+  collaborationService: PlatformCollaborationService;
   webAuthTokenLabel: string;
 }
 
@@ -150,6 +162,19 @@ async function handlePlatformRequest(
     if (method === "POST" && url.pathname === "/api/platform/agents/waiting/list") {
       const payload = await readJsonBody<ManagedAgentPlatformWaitingQueueListPayload>(request);
       return writeJson(response, 200, options.governanceService.listWaitingQueue(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/collaboration-dashboard") {
+      const payload = await readJsonBody<ManagedAgentPlatformCollaborationDashboardPayload>(request);
+      return writeJson(response, 200, options.collaborationService.getCollaborationDashboard(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/handoffs/list") {
+      const payload = await readJsonBody<ManagedAgentPlatformHandoffListPayload>(request);
+      const result = options.collaborationService.getAgentHandoffList(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/runs/list") {
