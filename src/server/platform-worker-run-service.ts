@@ -50,6 +50,14 @@ export interface PlatformWorkerRunService {
   }): ManagedAgentPlatformWorkerAssignedRunResult[];
 }
 
+export interface PlatformWorkerRunServiceSnapshot {
+  assignedRuns: ManagedAgentPlatformWorkerAssignedRunResult[];
+}
+
+export interface SnapshotCapablePlatformWorkerRunService extends PlatformWorkerRunService {
+  exportSnapshot(): PlatformWorkerRunServiceSnapshot;
+}
+
 export interface InMemoryPlatformWorkerRunServiceOptions {
   nodeService: PlatformNodeService;
   now?: () => string;
@@ -61,7 +69,7 @@ export interface InMemoryPlatformWorkerRunServiceOptions {
 
 export function createInMemoryPlatformWorkerRunService(
   options: InMemoryPlatformWorkerRunServiceOptions,
-): PlatformWorkerRunService {
+): SnapshotCapablePlatformWorkerRunService {
   const now = options.now ?? (() => new Date().toISOString());
   const generateRunId = options.generateRunId ?? createIdFactory("run-platform");
   const generateLeaseId = options.generateLeaseId ?? createIdFactory("lease-platform");
@@ -73,6 +81,12 @@ export function createInMemoryPlatformWorkerRunService(
   }
 
   return {
+    exportSnapshot() {
+      return {
+        assignedRuns: Array.from(assignedRuns.values()).map((assignedRun) => cloneAssignedRun(assignedRun)),
+      };
+    },
+
     listOwnerPrincipalIds() {
       return Array.from(
         new Set(

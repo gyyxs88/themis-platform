@@ -26,6 +26,15 @@ export interface PlatformNodeMutationPayload extends ManagedAgentPlatformWorkerN
   ownerPrincipalId: string;
 }
 
+export interface PlatformNodeServiceSnapshot {
+  organizations: ManagedAgentPlatformWorkerOrganizationRecord[];
+  nodes: ManagedAgentPlatformWorkerNodeRecord[];
+}
+
+export interface SnapshotCapablePlatformNodeService extends PlatformNodeService {
+  exportSnapshot(): PlatformNodeServiceSnapshot;
+}
+
 export interface InMemoryPlatformNodeServiceOptions {
   now?: () => string;
   generateNodeId?: () => string;
@@ -35,7 +44,7 @@ export interface InMemoryPlatformNodeServiceOptions {
 
 export function createInMemoryPlatformNodeService(
   options: InMemoryPlatformNodeServiceOptions = {},
-): PlatformNodeService {
+): SnapshotCapablePlatformNodeService {
   const now = options.now ?? (() => new Date().toISOString());
   const generateNodeId = options.generateNodeId ?? (() => `node-${Math.random().toString(36).slice(2, 10)}`);
   const organizations = new Map<string, ManagedAgentPlatformWorkerOrganizationRecord>();
@@ -54,6 +63,13 @@ export function createInMemoryPlatformNodeService(
   }
 
   return {
+    exportSnapshot() {
+      return {
+        organizations: Array.from(organizations.values()).map((organization) => ({ ...organization })),
+        nodes: Array.from(nodes.values()).map((node) => ({ ...node })),
+      };
+    },
+
     registerNode(payload) {
       const timestamp = now();
       const organization = getOrCreateOrganization(organizations, payload.ownerPrincipalId, payload.node.organizationId, timestamp);

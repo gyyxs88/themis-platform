@@ -65,11 +65,15 @@ test("createPlatformApp 会把 queued work-item 在 worker pull 时分配成新 
       agent: targetAgent,
     }],
   });
+  let mutationCount = 0;
   const server = createPlatformApp({
     nodeService,
     workerRunService,
     workflowService,
     controlPlaneService,
+    onStateMutation: () => {
+      mutationCount += 1;
+    },
   });
 
   try {
@@ -124,6 +128,7 @@ test("createPlatformApp 会把 queued work-item 在 worker pull 时分配成新 
     assert.equal(pullPayload.run?.nodeId, "node-runtime");
     assert.equal(pullPayload.executionLease?.status, "active");
     assert.equal(pullPayload.executionContract?.workspacePath, "/srv/runtime-project");
+    assert.equal(mutationCount, 2);
   } finally {
     server.close();
   }

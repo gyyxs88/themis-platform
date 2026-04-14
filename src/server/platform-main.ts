@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import { loadProjectEnv } from "../config/project-env.js";
 import { createInMemoryPlatformCollaborationService } from "./platform-collaboration-service.js";
@@ -6,6 +7,11 @@ import { createInMemoryPlatformGovernanceService } from "./platform-governance-s
 import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformOncallService } from "./platform-oncall-service.js";
 import { createPlatformApp } from "./platform-app.js";
+import {
+  exportPlatformRuntimeSnapshot,
+  loadPlatformRuntimeSnapshotFile,
+  savePlatformRuntimeSnapshotFile,
+} from "./platform-runtime-snapshot.js";
 import { createInMemoryPlatformSchedulerService } from "./platform-scheduler-service.js";
 import { createPlatformWebAccessService } from "./platform-web-access.js";
 import { createInMemoryPlatformWorkerRunService } from "./platform-worker-run-service.js";
@@ -15,6 +21,7 @@ const DEFAULT_PLATFORM_HOST = "0.0.0.0";
 const DEFAULT_PLATFORM_PORT = 3100;
 const DEFAULT_PLATFORM_SERVICE_NAME = "themis-platform";
 const DEFAULT_PLATFORM_SCHEDULER_INTERVAL_MS = 5000;
+const DEFAULT_PLATFORM_RUNTIME_SNAPSHOT_FILE = "infra/platform/runtime-state.json";
 
 export interface PlatformMainConfig {
   host: string;
@@ -43,6 +50,14 @@ export function bootstrapMessage(config: PlatformMainConfig): string {
   return `Themis Platform server listening on http://${config.host}:${config.port}`;
 }
 
+export function resolvePlatformRuntimeSnapshotFile(
+  workingDirectory: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const configured = normalizeFilePath(env.THEMIS_PLATFORM_RUNTIME_SNAPSHOT_FILE);
+  return resolve(workingDirectory, configured ?? DEFAULT_PLATFORM_RUNTIME_SNAPSHOT_FILE);
+}
+
 export function resolveListenAddresses(host: string, port: number): string[] {
   const addresses = new Set<string>();
   addresses.add(`http://localhost:${port}`);
@@ -65,22 +80,40 @@ export function resolveListenAddresses(host: string, port: number): string[] {
   return [...addresses];
 }
 
-export function createPlatformServerFromEnv(env: NodeJS.ProcessEnv = process.env) {
+export function createPlatformServerFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  workingDirectory: string = process.cwd(),
+) {
   const config = resolvePlatformMainConfig(env);
-  const nodeService = createInMemoryPlatformNodeService();
+  const runtimeSnapshotFile = resolvePlatformRuntimeSnapshotFile(workingDirectory, env);
+  const runtimeSnapshot = loadPlatformRuntimeSnapshotFile(runtimeSnapshotFile);
+  const nodeService = createInMemoryPlatformNodeService({
+    organizations: runtimeSnapshot?.nodeService.organizations,
+    nodes: runtimeSnapshot?.nodeService.nodes,
+  });
   const workerRunService = createInMemoryPlatformWorkerRunService({
     nodeService,
+    assignedRuns: runtimeSnapshot?.workerRunService.assignedRuns,
   });
   const governanceService = createInMemoryPlatformGovernanceService({
     workerRunService,
   });
   const collaborationService = createInMemoryPlatformCollaborationService({
     workerRunService,
+    parentSeeds: runtimeSnapshot?.workflowService.parentSeeds,
+    handoffSeeds: runtimeSnapshot?.workflowService.handoffSeeds,
   });
   const workflowService = createInMemoryPlatformWorkflowService({
     workerRunService,
+    agentSeeds: runtimeSnapshot?.workflowService.agentSeeds,
+    workItemSeeds: runtimeSnapshot?.workflowService.workItemSeeds,
+    mailboxSeeds: runtimeSnapshot?.workflowService.mailboxSeeds,
+    parentSeeds: runtimeSnapshot?.workflowService.parentSeeds,
+    handoffSeeds: runtimeSnapshot?.workflowService.handoffSeeds,
   });
-  const controlPlaneService = createInMemoryPlatformControlPlaneService();
+  const controlPlaneService = createInMemoryPlatformControlPlaneService({
+    snapshot: runtimeSnapshot?.controlPlaneService,
+  });
   const oncallService = createInMemoryPlatformOncallService({
     nodeService,
     governanceService,
@@ -91,10 +124,19 @@ export function createPlatformServerFromEnv(env: NodeJS.ProcessEnv = process.env
     nodeService,
     workerRunService,
   });
+  const persistRuntimeSnapshot = () => {
+    savePlatformRuntimeSnapshotFile(runtimeSnapshotFile, exportPlatformRuntimeSnapshot({
+      nodeService,
+      controlPlaneService,
+      workerRunService,
+      workflowService,
+    }));
+  };
   const server = createPlatformApp({
     serviceName: config.serviceName,
     appDisplayName: "Themis Platform",
     accessMode: "protected",
+    onStateMutation: persistRuntimeSnapshot,
     nodeService,
     workerRunService,
     governanceService,
@@ -112,12 +154,17 @@ export function createPlatformServerFromEnv(env: NodeJS.ProcessEnv = process.env
     config,
     server,
     schedulerService,
+    runtimeSnapshotFile,
+    persistRuntimeSnapshot,
   };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   loadProjectEnv();
-  const { config, server, schedulerService } = createPlatformServerFromEnv(process.env);
+  const { config, server, schedulerService, runtimeSnapshotFile, persistRuntimeSnapshot } = createPlatformServerFromEnv(
+    process.env,
+    process.cwd(),
+  );
   let schedulerTickRunning = false;
 
   const runSchedulerTick = () => {
@@ -131,6 +178,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       const tick = schedulerService.runTick();
 
       if (tick.reclaimedRunCount > 0) {
+        persistRuntimeSnapshot();
         console.warn(
           `[themis/platform] Scheduler reclaimed ${tick.reclaimedRunCount} runs,`
           + ` requeued ${tick.requeuedWorkItemCount} work-items.`,
@@ -155,6 +203,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(
       `[themis/platform] Scheduler interval ${Math.max(1, Math.round(config.schedulerIntervalMs / 1000))}s`,
     );
+    console.log(`[themis/platform] Runtime snapshot ${runtimeSnapshotFile}`);
 
     for (const address of resolveListenAddresses(config.host, config.port)) {
       console.log(`[themis/platform] Open ${address}`);
@@ -175,4 +224,9 @@ function normalizeHost(value: string | undefined): string {
 function normalizeServiceName(value: string | undefined): string {
   const normalized = value?.trim();
   return normalized ? normalized : DEFAULT_PLATFORM_SERVICE_NAME;
+}
+
+function normalizeFilePath(value: string | undefined): string | null {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
 }

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loadProjectEnv } from "../config/project-env.js";
-import { bootstrapMessage, resolvePlatformMainConfig } from "./platform-main.js";
+import { bootstrapMessage, resolvePlatformMainConfig, resolvePlatformRuntimeSnapshotFile } from "./platform-main.js";
 
 test("resolvePlatformMainConfig 会给平台服务使用生产监听默认值", () => {
   const config = resolvePlatformMainConfig({});
@@ -38,6 +38,14 @@ test("resolvePlatformMainConfig 会读取 THEMIS_PLATFORM_SCHEDULER_INTERVAL_MS"
   });
 
   assert.equal(config.schedulerIntervalMs, 15000);
+});
+
+test("resolvePlatformRuntimeSnapshotFile 会读取 THEMIS_PLATFORM_RUNTIME_SNAPSHOT_FILE", () => {
+  const filePath = resolvePlatformRuntimeSnapshotFile("/srv/themis-platform", {
+    THEMIS_PLATFORM_RUNTIME_SNAPSHOT_FILE: "infra/custom/runtime.json",
+  });
+
+  assert.equal(filePath, "/srv/themis-platform/infra/custom/runtime.json");
 });
 
 test("loadProjectEnv 后 resolvePlatformMainConfig 会读取 .env.local", () => {

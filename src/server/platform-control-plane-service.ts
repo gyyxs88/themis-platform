@@ -67,21 +67,57 @@ export interface PlatformControlPlaneService {
   ): ManagedAgentPlatformProjectWorkspaceBindingUpsertResult;
 }
 
+export interface PlatformControlPlaneOwnerSnapshot {
+  ownerPrincipalId: string;
+  organizations: ManagedAgentPlatformOrganizationRecord[];
+  principals: ManagedAgentPlatformPrincipalRecord[];
+  agents: ManagedAgentPlatformAgentRecord[];
+  workspacePolicies: ManagedAgentPlatformWorkspacePolicyRecord[];
+  runtimeProfiles: ManagedAgentPlatformRuntimeProfileRecord[];
+  authAccounts: ManagedAgentPlatformAuthAccountRecord[];
+  thirdPartyProviders: ManagedAgentPlatformThirdPartyProviderRecord[];
+  projectBindings: ManagedAgentPlatformProjectWorkspaceBindingRecord[];
+  spawnPolicy: ManagedAgentPlatformSpawnPolicyRecord | null;
+}
+
+export interface PlatformControlPlaneServiceSnapshot {
+  owners: PlatformControlPlaneOwnerSnapshot[];
+}
+
+export interface SnapshotCapablePlatformControlPlaneService extends PlatformControlPlaneService {
+  exportSnapshot(): PlatformControlPlaneServiceSnapshot;
+}
+
 export interface PlatformControlPlaneServiceOptions {
   now?: () => string;
   generateOrganizationId?: () => string;
   generatePrincipalId?: () => string;
   generateAgentId?: () => string;
+  snapshot?: PlatformControlPlaneServiceSnapshot;
 }
 
 export function createInMemoryPlatformControlPlaneService(
   options: PlatformControlPlaneServiceOptions = {},
-): PlatformControlPlaneService {
+): SnapshotCapablePlatformControlPlaneService {
   const now = options.now ?? (() => new Date().toISOString());
   const generateOrganizationId = options.generateOrganizationId ?? createIdFactory("org");
   const generatePrincipalId = options.generatePrincipalId ?? createIdFactory("principal");
   const generateAgentId = options.generateAgentId ?? createIdFactory("agent");
   const ownerStates = new Map<string, OwnerControlPlaneState>();
+
+  for (const owner of options.snapshot?.owners ?? []) {
+    ownerStates.set(normalizeText(owner.ownerPrincipalId), {
+      organizations: new Map(owner.organizations.map((organization) => [organization.organizationId, { ...organization }])),
+      principals: new Map(owner.principals.map((principal) => [principal.principalId, { ...principal }])),
+      agents: new Map(owner.agents.map((agent) => [agent.agentId, { ...agent }])),
+      workspacePolicies: new Map(owner.workspacePolicies.map((policy) => [policy.agentId, cloneWorkspacePolicy(policy)])),
+      runtimeProfiles: new Map(owner.runtimeProfiles.map((profile) => [profile.agentId, { ...profile }])),
+      authAccounts: new Map(groupByAgentId(owner.authAccounts).map(([agentId, accounts]) => [agentId, accounts.map((account) => ({ ...account }))])),
+      thirdPartyProviders: new Map(groupByAgentId(owner.thirdPartyProviders).map(([agentId, providers]) => [agentId, providers.map((provider) => ({ ...provider }))])),
+      projectBindings: new Map(owner.projectBindings.map((binding) => [binding.projectId, cloneProjectBinding(binding)])),
+      spawnPolicy: owner.spawnPolicy ? { ...owner.spawnPolicy } : null,
+    });
+  }
 
   const ensureOwnerState = (ownerPrincipalId: string): OwnerControlPlaneState => {
     const normalizedOwnerPrincipalId = normalizeText(ownerPrincipalId);
@@ -177,6 +213,23 @@ export function createInMemoryPlatformControlPlaneService(
   };
 
   return {
+    exportSnapshot() {
+      return {
+        owners: Array.from(ownerStates.entries()).map(([ownerPrincipalId, state]) => ({
+          ownerPrincipalId,
+          organizations: Array.from(state.organizations.values()).map((organization) => ({ ...organization })),
+          principals: Array.from(state.principals.values()).map((principal) => ({ ...principal })),
+          agents: Array.from(state.agents.values()).map((agent) => ({ ...agent })),
+          workspacePolicies: Array.from(state.workspacePolicies.values()).map((policy) => cloneWorkspacePolicy(policy)),
+          runtimeProfiles: Array.from(state.runtimeProfiles.values()).map((profile) => ({ ...profile })),
+          authAccounts: Array.from(state.authAccounts.values()).flatMap((accounts) => accounts.map((account) => ({ ...account }))),
+          thirdPartyProviders: Array.from(state.thirdPartyProviders.values()).flatMap((providers) => providers.map((provider) => ({ ...provider }))),
+          projectBindings: Array.from(state.projectBindings.values()).map((binding) => cloneProjectBinding(binding)),
+          spawnPolicy: state.spawnPolicy ? { ...state.spawnPolicy } : null,
+        })),
+      };
+    },
+
     listAgents(input) {
       const state = ensureOwnerState(input.ownerPrincipalId);
       return {
@@ -401,6 +454,43 @@ function normalizeText(value: string) {
 function normalizeOptionalText(value: string | null | undefined) {
   const normalized = typeof value === "string" ? value.trim() : "";
   return normalized || undefined;
+}
+
+function cloneWorkspacePolicy(
+  policy: ManagedAgentPlatformWorkspacePolicyRecord,
+): ManagedAgentPlatformWorkspacePolicyRecord {
+  return {
+    ...policy,
+    additionalWorkspacePaths: Array.isArray(policy.additionalWorkspacePaths)
+      ? [...policy.additionalWorkspacePaths]
+      : [],
+  };
+}
+
+function cloneProjectBinding(
+  binding: ManagedAgentPlatformProjectWorkspaceBindingRecord,
+): ManagedAgentPlatformProjectWorkspaceBindingRecord {
+  return {
+    ...binding,
+  };
+}
+
+function groupByAgentId<T extends { agentId: string }>(records: T[]): Array<[string, T[]]> {
+  const groups = new Map<string, T[]>();
+
+  for (const record of records) {
+    const agentId = normalizeText(record.agentId);
+    const existing = groups.get(agentId);
+
+    if (existing) {
+      existing.push(record);
+      continue;
+    }
+
+    groups.set(agentId, [record]);
+  }
+
+  return Array.from(groups.entries());
 }
 
 function slugify(value: string) {

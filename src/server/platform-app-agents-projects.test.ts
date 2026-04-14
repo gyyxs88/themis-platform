@@ -42,6 +42,27 @@ test("createPlatformApp 会暴露 agents 与 projects 最小控制面路由", as
     };
     assert.equal(created.agent?.agentId, "agent-alpha");
 
+    const dispatchResponse = await fetch(`${baseUrl}/api/platform/work-items/dispatch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItem: {
+          targetAgentId: "agent-alpha",
+          sourceType: "human",
+          goal: "验证新建 agent 会同步到 workflow。",
+          priority: "normal",
+        },
+      }),
+    });
+    assert.equal(dispatchResponse.status, 200);
+    const dispatched = await dispatchResponse.json() as {
+      workItem?: { targetAgentId?: string };
+    };
+    assert.equal(dispatched.workItem?.targetAgentId, "agent-alpha");
+
     const listResponse = await fetch(`${baseUrl}/api/platform/agents/list`, {
       method: "POST",
       headers: {

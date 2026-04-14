@@ -77,6 +77,7 @@ export interface PlatformAppOptions {
   appDisplayName?: string;
   accessMode?: "open" | "protected";
   defaultWorkspacePath?: string;
+  onStateMutation?: () => void;
   nodeService?: PlatformNodeService;
   workerRunService?: PlatformWorkerRunService;
   governanceService?: PlatformGovernanceService;
@@ -126,6 +127,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       appDisplayName,
       accessMode,
       defaultWorkspacePath,
+      onStateMutation: options.onStateMutation,
       nodeService,
       workerRunService,
       governanceService,
@@ -144,6 +146,7 @@ interface HandlePlatformRequestOptions {
   appDisplayName: string;
   accessMode: "open" | "protected";
   defaultWorkspacePath: string;
+  onStateMutation?: () => void;
   nodeService: PlatformNodeService;
   workerRunService: PlatformWorkerRunService;
   governanceService: PlatformGovernanceService;
@@ -217,7 +220,9 @@ async function handlePlatformRequest(
       if (!payload) {
         return;
       }
-      return writeJson(response, 200, options.nodeService.registerNode(payload));
+      const result = options.nodeService.registerNode(payload);
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/heartbeat") {
@@ -226,9 +231,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.nodeService.heartbeatNode(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.node?.nodeId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.node?.nodeId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/list") {
@@ -258,9 +265,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.nodeService.drainNode(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/offline") {
@@ -269,9 +278,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.nodeService.offlineNode(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/nodes/reclaim") {
@@ -280,9 +291,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.nodeService.reclaimNode(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/governance-overview") {
@@ -317,7 +330,14 @@ async function handlePlatformRequest(
       if (!payload) {
         return;
       }
-      return writeJson(response, 200, options.controlPlaneService.createAgent(payload));
+      const result = options.controlPlaneService.createAgent(payload);
+      options.workflowService.registerAgent({
+        ownerPrincipalId: payload.ownerPrincipalId,
+        organization: result.organization,
+        agent: result.agent,
+      });
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/execution-boundary/update") {
@@ -326,9 +346,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.controlPlaneService.updateExecutionBoundary(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/spawn-policy/update") {
@@ -336,7 +358,9 @@ async function handlePlatformRequest(
       if (!payload) {
         return;
       }
-      return writeJson(response, 200, options.controlPlaneService.updateSpawnPolicy(payload));
+      const result = options.controlPlaneService.updateSpawnPolicy(payload);
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/pause") {
@@ -345,9 +369,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.controlPlaneService.pauseAgent(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/resume") {
@@ -356,9 +382,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.controlPlaneService.resumeAgent(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/archive") {
@@ -367,9 +395,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.controlPlaneService.archiveAgent(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/waiting/list") {
@@ -416,9 +446,13 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.workflowService.pullMailbox(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      }
+      if (result.item) {
+        recordStateMutation(options);
+      }
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/mailbox/ack") {
@@ -427,9 +461,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.workflowService.ackMailbox(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Mailbox entry ${payload.mailboxEntryId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Mailbox entry ${payload.mailboxEntryId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/agents/mailbox/respond") {
@@ -438,9 +474,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.workflowService.respondMailbox(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Mailbox entry ${payload.mailboxEntryId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Mailbox entry ${payload.mailboxEntryId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/list") {
@@ -475,7 +513,9 @@ async function handlePlatformRequest(
       if (!payload) {
         return;
       }
-      return writeJson(response, 200, options.controlPlaneService.upsertProjectWorkspaceBinding(payload));
+      const result = options.controlPlaneService.upsertProjectWorkspaceBinding(payload);
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/detail") {
@@ -494,7 +534,9 @@ async function handlePlatformRequest(
       if (!payload) {
         return;
       }
-      return writeJson(response, 200, options.workflowService.dispatchWorkItem(payload));
+      const result = options.workflowService.dispatchWorkItem(payload);
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/cancel") {
@@ -503,9 +545,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.workflowService.cancelWorkItem(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/respond") {
@@ -514,9 +558,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.workflowService.respondToWorkItem(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/escalate") {
@@ -525,9 +571,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.workflowService.escalateWorkItem(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/runs/list") {
@@ -555,12 +603,17 @@ async function handlePlatformRequest(
         return;
       }
       let result = options.workerRunService.pullAssignedRun(payload);
+      let didMutate = false;
 
       if (!result) {
         const scheduled = scheduleQueuedWorkItemForNode(payload, options);
+        didMutate = Boolean(scheduled);
         result = scheduled ?? options.workerRunService.pullAssignedRun(payload);
       }
 
+      if (didMutate) {
+        recordStateMutation(options);
+      }
       return writeJson(response, 200, result ?? {});
     }
 
@@ -570,9 +623,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.workerRunService.updateRunStatus(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/worker/runs/complete") {
@@ -581,9 +636,11 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.workerRunService.completeRun(payload);
-      return result
-        ? writeJson(response, 200, result)
-        : writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
+      }
+      recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (url.pathname.startsWith("/api/")) {
@@ -706,6 +763,10 @@ function resolveWorkspacePathForQueuedWorkItem(
   }
 
   return options.defaultWorkspacePath;
+}
+
+function recordStateMutation(options: HandlePlatformRequestOptions): void {
+  options.onStateMutation?.();
 }
 
 function buildNotFoundErrorResponse(message: string): { error: { code: "NOT_FOUND"; message: string } } {

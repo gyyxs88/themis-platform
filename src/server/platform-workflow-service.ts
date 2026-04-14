@@ -60,9 +60,18 @@ export interface PlatformMailboxSeed {
   message: ManagedAgentPlatformMessageRecord;
 }
 
+export interface PlatformWorkflowServiceSnapshot {
+  agentSeeds: PlatformAgentSeed[];
+  workItemSeeds: PlatformWorkItemSeed[];
+  mailboxSeeds: PlatformMailboxSeed[];
+  parentSeeds: PlatformCollaborationParentSeed[];
+  handoffSeeds: PlatformAgentHandoffSeed[];
+}
+
 export interface PlatformWorkflowService {
   listWorkItems(payload: ManagedAgentPlatformWorkItemListPayload): ManagedAgentPlatformWorkItemListResult;
   getWorkItemDetail(payload: ManagedAgentPlatformWorkItemDetailPayload): ManagedAgentPlatformWorkItemDetailResult | null;
+  registerAgent(seed: PlatformAgentSeed): void;
   claimNextQueuedWorkItem(input: {
     ownerPrincipalId: string;
     organizationId?: string;
@@ -76,6 +85,10 @@ export interface PlatformWorkflowService {
   pullMailbox(payload: ManagedAgentPlatformMailboxPullPayload): ManagedAgentPlatformMailboxPullResult | null;
   ackMailbox(payload: ManagedAgentPlatformMailboxAckPayload): ManagedAgentPlatformMailboxAckResult | null;
   respondMailbox(payload: ManagedAgentPlatformMailboxRespondPayload): ManagedAgentPlatformMailboxRespondResult | null;
+}
+
+export interface SnapshotCapablePlatformWorkflowService extends PlatformWorkflowService {
+  exportSnapshot(): PlatformWorkflowServiceSnapshot;
 }
 
 export interface InMemoryPlatformWorkflowServiceOptions {
@@ -93,7 +106,7 @@ export interface InMemoryPlatformWorkflowServiceOptions {
 
 export function createInMemoryPlatformWorkflowService(
   options: InMemoryPlatformWorkflowServiceOptions,
-): PlatformWorkflowService {
+): SnapshotCapablePlatformWorkflowService {
   const now = options.now ?? (() => new Date().toISOString());
   const workItemContexts = new Map<string, PlatformWorkItemContext>();
   const mailboxContexts = new Map<string, PlatformMailboxSeed>();
@@ -113,6 +126,16 @@ export function createInMemoryPlatformWorkflowService(
   }
 
   return {
+    exportSnapshot() {
+      return {
+        agentSeeds: agentSeeds.map(cloneAgentSeed),
+        workItemSeeds: Array.from(workItemContexts.values()).map((context) => cloneWorkItemContext(context)),
+        mailboxSeeds: Array.from(mailboxContexts.values()).map((context) => cloneMailboxSeed(context)),
+        parentSeeds: parentSeeds.map(cloneParentSeed),
+        handoffSeeds: handoffSeeds.map(cloneHandoffSeed),
+      };
+    },
+
     listWorkItems(payload) {
       const items = listAllWorkItemContexts(payload.ownerPrincipalId)
         .filter((context) => !payload.agentId || context.targetAgent.agentId === payload.agentId)
@@ -166,6 +189,27 @@ export function createInMemoryPlatformWorkflowService(
           : [],
         ...(latestHandoff ? { latestHandoff: { ...latestHandoff } } : { latestHandoff: null }),
       } satisfies ManagedAgentPlatformWorkItemDetailView;
+    },
+
+    registerAgent(seed) {
+      const normalizedOwnerPrincipalId = normalizeText(seed.ownerPrincipalId);
+      const normalizedAgentId = normalizeText(seed.agent.agentId);
+      const existingIndex = agentSeeds.findIndex((candidate) => (
+        candidate.ownerPrincipalId === normalizedOwnerPrincipalId
+        && candidate.agent.agentId === normalizedAgentId
+      ));
+      const nextSeed = cloneAgentSeed({
+        ownerPrincipalId: normalizedOwnerPrincipalId,
+        organization: seed.organization,
+        agent: seed.agent,
+      });
+
+      if (existingIndex >= 0) {
+        agentSeeds.splice(existingIndex, 1, nextSeed);
+        return;
+      }
+
+      agentSeeds.push(nextSeed);
     },
 
     claimNextQueuedWorkItem(input) {
