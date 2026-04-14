@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import {
+  createLocalPlatformExecutionRuntimeStore,
+  loadPlatformExecutionRuntimeEvents,
+  loadPlatformExecutionRuntimeState,
+} from "./platform-execution-runtime-store.js";
 import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformSchedulerService } from "./platform-scheduler-service.js";
 import { createInMemoryPlatformWorkerRunService } from "./platform-worker-run-service.js";
 import { createInMemoryPlatformWorkflowService } from "./platform-workflow-service.js";
 
 test("PlatformSchedulerService 会回收离线节点 active lease，并允许 work-item 重新分配", () => {
+  const workingDirectory = mkdtempSync(join(tmpdir(), "themis-platform-scheduler-"));
   const ownerPrincipalId = "principal-owner";
   const organization = {
     organizationId: "org-platform",
@@ -113,52 +122,80 @@ test("PlatformSchedulerService 会回收离线节点 active lease，并允许 wo
       agent: targetAgent,
     }],
   });
-  const schedulerService = createInMemoryPlatformSchedulerService({
-    nodeService,
-    workerRunService,
+  const executionRuntimeStore = createLocalPlatformExecutionRuntimeStore({
+    rootDirectory: join(workingDirectory, "infra/platform/runtime-runs"),
     now: () => "2026-04-14T11:06:00.000Z",
   });
 
-  const tick = schedulerService.runTick();
-  assert.deepEqual(tick, {
-    ownerCount: 1,
-    reclaimedRunCount: 1,
-    requeuedWorkItemCount: 1,
-    revokedLeaseCount: 1,
-  });
+  try {
+    const schedulerService = createInMemoryPlatformSchedulerService({
+      nodeService,
+      workerRunService,
+      executionRuntimeStore,
+      now: () => "2026-04-14T11:06:00.000Z",
+    });
 
-  const recovered = workerRunService.getAssignedRunByWorkItem({
-    ownerPrincipalId,
-    workItemId: "work-item-a",
-  });
-  assert.equal(recovered?.run.runId, "run-a");
-  assert.equal(recovered?.run.status, "interrupted");
-  assert.equal(recovered?.executionLease.status, "revoked");
-  assert.equal(recovered?.workItem.status, "queued");
+    const tick = schedulerService.runTick();
+    assert.deepEqual(tick, {
+      ownerCount: 1,
+      reclaimedRunCount: 1,
+      requeuedWorkItemCount: 1,
+      revokedLeaseCount: 1,
+    });
 
-  const queued = workflowService.claimNextQueuedWorkItem({
-    ownerPrincipalId,
-    organizationId: organization.organizationId,
-  });
-  assert.equal(queued?.workItem.workItemId, "work-item-a");
+    const recovered = workerRunService.getAssignedRunByWorkItem({
+      ownerPrincipalId,
+      workItemId: "work-item-a",
+    });
+    assert.equal(recovered?.run.runId, "run-a");
+    assert.equal(recovered?.run.status, "interrupted");
+    assert.equal(recovered?.executionLease.status, "revoked");
+    assert.equal(recovered?.workItem.status, "queued");
 
-  const reassigned = workerRunService.assignQueuedWorkItem({
-    ownerPrincipalId,
-    nodeId: "node-online",
-    organization,
-    targetAgent,
-    workItem: queued!.workItem,
-    workspacePath: "/srv/reassigned",
-  });
-  assert.equal(reassigned?.run.runId, "run-reassigned");
-  assert.equal(reassigned?.node.nodeId, "node-online");
-  assert.equal(reassigned?.executionLease.status, "active");
-  assert.equal(reassigned?.executionContract.workspacePath, "/srv/reassigned");
+    const runtimeState = loadPlatformExecutionRuntimeState(
+      join(workingDirectory, "infra/platform/runtime-runs"),
+      ownerPrincipalId,
+      "run-a",
+    );
+    assert(runtimeState);
+    assert.equal(runtimeState.lastEventKind, "reclaimed");
+    assert.equal(runtimeState.runStatus, "interrupted");
+    assert.equal(runtimeState.leaseStatus, "revoked");
 
-  const current = workerRunService.getAssignedRunByWorkItem({
-    ownerPrincipalId,
-    workItemId: "work-item-a",
-  });
-  assert.equal(current?.run.runId, "run-reassigned");
-  assert.equal(current?.node.nodeId, "node-online");
+    const runtimeEvents = loadPlatformExecutionRuntimeEvents(
+      join(workingDirectory, "infra/platform/runtime-runs"),
+      ownerPrincipalId,
+      "run-a",
+    );
+    assert.deepEqual(runtimeEvents.map((event) => event.kind), ["reclaimed"]);
+    assert.equal(runtimeEvents[0]?.reason, "node_status_offline");
+
+    const queued = workflowService.claimNextQueuedWorkItem({
+      ownerPrincipalId,
+      organizationId: organization.organizationId,
+    });
+    assert.equal(queued?.workItem.workItemId, "work-item-a");
+
+    const reassigned = workerRunService.assignQueuedWorkItem({
+      ownerPrincipalId,
+      nodeId: "node-online",
+      organization,
+      targetAgent,
+      workItem: queued!.workItem,
+      workspacePath: "/srv/reassigned",
+    });
+    assert.equal(reassigned?.run.runId, "run-reassigned");
+    assert.equal(reassigned?.node.nodeId, "node-online");
+    assert.equal(reassigned?.executionLease.status, "active");
+    assert.equal(reassigned?.executionContract.workspacePath, "/srv/reassigned");
+
+    const current = workerRunService.getAssignedRunByWorkItem({
+      ownerPrincipalId,
+      workItemId: "work-item-a",
+    });
+    assert.equal(current?.run.runId, "run-reassigned");
+    assert.equal(current?.node.nodeId, "node-online");
+  } finally {
+    rmSync(workingDirectory, { recursive: true, force: true });
+  }
 });

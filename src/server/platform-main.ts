@@ -3,6 +3,7 @@ import { networkInterfaces } from "node:os";
 import { loadProjectEnv } from "../config/project-env.js";
 import { createInMemoryPlatformCollaborationService } from "./platform-collaboration-service.js";
 import { createInMemoryPlatformControlPlaneService } from "./platform-control-plane-service.js";
+import { createLocalPlatformExecutionRuntimeStore } from "./platform-execution-runtime-store.js";
 import { createInMemoryPlatformGovernanceService } from "./platform-governance-service.js";
 import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformOncallService } from "./platform-oncall-service.js";
@@ -22,6 +23,7 @@ const DEFAULT_PLATFORM_PORT = 3100;
 const DEFAULT_PLATFORM_SERVICE_NAME = "themis-platform";
 const DEFAULT_PLATFORM_SCHEDULER_INTERVAL_MS = 5000;
 const DEFAULT_PLATFORM_RUNTIME_SNAPSHOT_FILE = "infra/platform/runtime-state.json";
+const DEFAULT_PLATFORM_EXECUTION_RUNTIME_ROOT = "infra/platform/runtime-runs";
 
 export interface PlatformMainConfig {
   host: string;
@@ -58,6 +60,14 @@ export function resolvePlatformRuntimeSnapshotFile(
   return resolve(workingDirectory, configured ?? DEFAULT_PLATFORM_RUNTIME_SNAPSHOT_FILE);
 }
 
+export function resolvePlatformExecutionRuntimeRoot(
+  workingDirectory: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const configured = normalizeFilePath(env.THEMIS_PLATFORM_EXECUTION_RUNTIME_ROOT);
+  return resolve(workingDirectory, configured ?? DEFAULT_PLATFORM_EXECUTION_RUNTIME_ROOT);
+}
+
 export function resolveListenAddresses(host: string, port: number): string[] {
   const addresses = new Set<string>();
   addresses.add(`http://localhost:${port}`);
@@ -86,6 +96,7 @@ export function createPlatformServerFromEnv(
 ) {
   const config = resolvePlatformMainConfig(env);
   const runtimeSnapshotFile = resolvePlatformRuntimeSnapshotFile(workingDirectory, env);
+  const executionRuntimeRoot = resolvePlatformExecutionRuntimeRoot(workingDirectory, env);
   const runtimeSnapshot = loadPlatformRuntimeSnapshotFile(runtimeSnapshotFile);
   const nodeService = createInMemoryPlatformNodeService({
     organizations: runtimeSnapshot?.nodeService.organizations,
@@ -120,9 +131,13 @@ export function createPlatformServerFromEnv(
     workerRunService,
     controlPlaneService,
   });
+  const executionRuntimeStore = createLocalPlatformExecutionRuntimeStore({
+    rootDirectory: executionRuntimeRoot,
+  });
   const schedulerService = createInMemoryPlatformSchedulerService({
     nodeService,
     workerRunService,
+    executionRuntimeStore,
   });
   const persistRuntimeSnapshot = () => {
     savePlatformRuntimeSnapshotFile(runtimeSnapshotFile, exportPlatformRuntimeSnapshot({
@@ -137,6 +152,7 @@ export function createPlatformServerFromEnv(
     appDisplayName: "Themis Platform",
     accessMode: "protected",
     onStateMutation: persistRuntimeSnapshot,
+    executionRuntimeStore,
     nodeService,
     workerRunService,
     governanceService,
@@ -155,13 +171,21 @@ export function createPlatformServerFromEnv(
     server,
     schedulerService,
     runtimeSnapshotFile,
+    executionRuntimeRoot,
     persistRuntimeSnapshot,
   };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   loadProjectEnv();
-  const { config, server, schedulerService, runtimeSnapshotFile, persistRuntimeSnapshot } = createPlatformServerFromEnv(
+  const {
+    config,
+    server,
+    schedulerService,
+    runtimeSnapshotFile,
+    executionRuntimeRoot,
+    persistRuntimeSnapshot,
+  } = createPlatformServerFromEnv(
     process.env,
     process.cwd(),
   );
@@ -204,6 +228,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       `[themis/platform] Scheduler interval ${Math.max(1, Math.round(config.schedulerIntervalMs / 1000))}s`,
     );
     console.log(`[themis/platform] Runtime snapshot ${runtimeSnapshotFile}`);
+    console.log(`[themis/platform] Execution runtime ${executionRuntimeRoot}`);
 
     for (const address of resolveListenAddresses(config.host, config.port)) {
       console.log(`[themis/platform] Open ${address}`);

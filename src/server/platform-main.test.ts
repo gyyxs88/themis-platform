@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loadProjectEnv } from "../config/project-env.js";
-import { bootstrapMessage, resolvePlatformMainConfig, resolvePlatformRuntimeSnapshotFile } from "./platform-main.js";
+import {
+  bootstrapMessage,
+  resolvePlatformExecutionRuntimeRoot,
+  resolvePlatformMainConfig,
+  resolvePlatformRuntimeSnapshotFile,
+} from "./platform-main.js";
 
 test("resolvePlatformMainConfig 会给平台服务使用生产监听默认值", () => {
   const config = resolvePlatformMainConfig({});
@@ -46,6 +51,14 @@ test("resolvePlatformRuntimeSnapshotFile 会读取 THEMIS_PLATFORM_RUNTIME_SNAPS
   });
 
   assert.equal(filePath, "/srv/themis-platform/infra/custom/runtime.json");
+});
+
+test("resolvePlatformExecutionRuntimeRoot 会读取 THEMIS_PLATFORM_EXECUTION_RUNTIME_ROOT", () => {
+  const rootDirectory = resolvePlatformExecutionRuntimeRoot("/srv/themis-platform", {
+    THEMIS_PLATFORM_EXECUTION_RUNTIME_ROOT: "infra/custom/runtime-runs",
+  });
+
+  assert.equal(rootDirectory, "/srv/themis-platform/infra/custom/runtime-runs");
 });
 
 test("loadProjectEnv 后 resolvePlatformMainConfig 会读取 .env.local", () => {

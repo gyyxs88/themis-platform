@@ -71,6 +71,7 @@ import {
   PlatformWebAccessService,
   requirePlatformWebAccess,
 } from "./platform-web-access.js";
+import type { PlatformExecutionRuntimeStore } from "./platform-execution-runtime-store.js";
 
 export interface PlatformAppOptions {
   serviceName?: string;
@@ -78,6 +79,7 @@ export interface PlatformAppOptions {
   accessMode?: "open" | "protected";
   defaultWorkspacePath?: string;
   onStateMutation?: () => void;
+  executionRuntimeStore?: PlatformExecutionRuntimeStore;
   nodeService?: PlatformNodeService;
   workerRunService?: PlatformWorkerRunService;
   governanceService?: PlatformGovernanceService;
@@ -128,6 +130,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       accessMode,
       defaultWorkspacePath,
       onStateMutation: options.onStateMutation,
+      executionRuntimeStore: options.executionRuntimeStore,
       nodeService,
       workerRunService,
       governanceService,
@@ -147,6 +150,7 @@ interface HandlePlatformRequestOptions {
   accessMode: "open" | "protected";
   defaultWorkspacePath: string;
   onStateMutation?: () => void;
+  executionRuntimeStore?: PlatformExecutionRuntimeStore;
   nodeService: PlatformNodeService;
   workerRunService: PlatformWorkerRunService;
   governanceService: PlatformGovernanceService;
@@ -611,6 +615,20 @@ async function handlePlatformRequest(
         result = scheduled ?? options.workerRunService.pullAssignedRun(payload);
       }
 
+      if (result && options.executionRuntimeStore) {
+        if (didMutate) {
+          options.executionRuntimeStore.recordAssignedRun({
+            assignedRun: result,
+            source: "scheduled",
+          });
+        } else {
+          options.executionRuntimeStore.ensureAssignedRun({
+            assignedRun: result,
+            source: "pull_restore",
+          });
+        }
+      }
+
       if (didMutate) {
         recordStateMutation(options);
       }
@@ -626,6 +644,16 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
       }
+      const assignedRun = options.workerRunService.getAssignedRunByWorkItem({
+        ownerPrincipalId: payload.ownerPrincipalId,
+        workItemId: result.workItem.workItemId,
+      });
+      if (assignedRun) {
+        options.executionRuntimeStore?.recordRunStatus({
+          assignedRun,
+          payload,
+        });
+      }
       recordStateMutation(options);
       return writeJson(response, 200, result);
     }
@@ -638,6 +666,16 @@ async function handlePlatformRequest(
       const result = options.workerRunService.completeRun(payload);
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
+      }
+      const assignedRun = options.workerRunService.getAssignedRunByWorkItem({
+        ownerPrincipalId: payload.ownerPrincipalId,
+        workItemId: result.workItem.workItemId,
+      });
+      if (assignedRun) {
+        options.executionRuntimeStore?.recordRunCompletion({
+          assignedRun,
+          completionResult: payload.result,
+        });
       }
       recordStateMutation(options);
       return writeJson(response, 200, result);

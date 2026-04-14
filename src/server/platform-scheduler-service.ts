@@ -1,5 +1,6 @@
 import type { PlatformNodeService } from "./platform-node-service.js";
 import type { PlatformWorkerRunService } from "./platform-worker-run-service.js";
+import type { PlatformExecutionRuntimeStore } from "./platform-execution-runtime-store.js";
 
 export interface PlatformSchedulerTickResult {
   ownerCount: number;
@@ -15,6 +16,7 @@ export interface PlatformSchedulerService {
 export interface InMemoryPlatformSchedulerServiceOptions {
   nodeService: PlatformNodeService;
   workerRunService: PlatformWorkerRunService;
+  executionRuntimeStore?: PlatformExecutionRuntimeStore;
   now?: () => string;
 }
 
@@ -76,6 +78,10 @@ export function createInMemoryPlatformSchedulerService(
             continue;
           }
 
+          options.executionRuntimeStore?.recordRunReclaim({
+            assignedRun: updated,
+            reason: `node_status_${nodeStatus}`,
+          });
           summary.reclaimedRunCount += 1;
           summary.requeuedWorkItemCount += 1;
           summary.revokedLeaseCount += 1;

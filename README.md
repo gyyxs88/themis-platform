@@ -35,6 +35,7 @@
 - `src/server/platform-main.ts` 现在会先读取仓库根目录 `.env/.env.local`，并按 `THEMIS_HOST` / `THEMIS_PORT` 启动；默认监听已改成 `0.0.0.0:3100`，不再固定写死 `127.0.0.1:3200`。
 - 平台 Web 登录口令当前通过环境变量 `THEMIS_PLATFORM_WEB_ACCESS_TOKEN`（可选 `THEMIS_PLATFORM_WEB_ACCESS_TOKEN_LABEL`）提供；平台服务 Bearer token 仍由 `infra/local/platform-service-tokens.json` 承载。
 - 独立平台仓当前还支持本地 runtime snapshot：`src/server/platform-main.ts` 会默认把 `nodes / control-plane / workflow / worker-runs` 状态落到 `infra/platform/runtime-state.json`；如需自定义路径，可配置 `THEMIS_PLATFORM_RUNTIME_SNAPSHOT_FILE`。
+- 独立平台仓当前也支持本地 execution runtime store：`src/server/platform-main.ts` 会默认把每个 run 的 `assigned-run / state / events` 写到 `infra/platform/runtime-runs/`；如需自定义路径，可配置 `THEMIS_PLATFORM_EXECUTION_RUNTIME_ROOT`。
 - 平台常驻建议直接使用根目录 `./themis-platform` 或 `npm run start:platform`，不要再借主仓 `./themis` 的兼容入口。
 - 平台机本地运行态会写入 `infra/local/` 与 `infra/platform/`，这两个目录已经加入 `.gitignore`，不应纳入版本控制。
 
@@ -57,6 +58,7 @@
 - 当前 `platform-main` 已具备真实部署入口和最小 `Web Access + Bearer` 鉴权语义，但平台事实仍是 in-memory；后续还需继续迁入 MySQL shared control plane 与 scheduler/runtime 主链，才能替换现网平台服务。
 - 当前 scheduler/runtime 主链已补入第一刀：`worker pull` 会根据节点所属组织挑选最高优先级 `queued work-item`，并优先使用 `projects/workspace-binding` 里的 `lastActiveWorkspacePath / canonicalWorkspacePath` 生成执行合同；但平台事实仍是 in-memory，尚未接入现网 MySQL shared control plane。
 - 当前 scheduler/runtime 主链已补入第二刀：`platform-main` 现在会按 `THEMIS_PLATFORM_SCHEDULER_INTERVAL_MS` 定期运行 `scheduler tick`，自动回收 `offline / draining` 节点上的 active lease，并把对应 work-item 重新排回 `queued`，供后续在线节点重新拉取；当前剩余主阻塞已收敛到 MySQL shared control plane 与 runtime 持久化。
-- 当前 runtime 持久化已补入第一刀：平台路由上的状态变更现在会触发本地 snapshot 落盘，`platform-main` 重启后也会从 `runtime-state.json` 恢复 `nodes / control-plane / workflow / worker-runs` 这四束平台事实；当前剩余主阻塞已进一步收敛到 `MySQL shared control plane` 与真正的 `runtime store / execution runtime` 接线。
+- 当前 runtime 持久化已补入第一刀：平台路由上的状态变更现在会触发本地 snapshot 落盘，`platform-main` 重启后也会从 `runtime-state.json` 恢复 `nodes / control-plane / workflow / worker-runs` 这四束平台事实。
+- 当前 runtime store / execution runtime 已补入第二刀：`worker/runs/pull|update|complete` 与 `scheduler tick reclaim` 现在都会把每个 run 的 `assigned-run.json / state.json / events.ndjson` 写入 `infra/platform/runtime-runs/`；当前剩余主阻塞已收敛到 `MySQL shared control plane` 与本地 shared cache / mirror flush。
 
 下一步应优先把本地 token 存储与平台服务端鉴权事实继续收口到同一控制面，再逐步把当前 in-memory 平台事实换成真实持久化控制面。
