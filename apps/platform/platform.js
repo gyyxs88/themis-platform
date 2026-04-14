@@ -7,6 +7,13 @@ const EMPTY_GOVERNANCE_SUMMARY = {
   attentionCount: 0,
 };
 
+const EMPTY_WORK_ITEM_SUMMARY = {
+  total: 0,
+  waitingHuman: 0,
+  waitingAgent: 0,
+  queued: 0,
+};
+
 export function normalizeOwnerPrincipalId(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -98,6 +105,46 @@ export function initializePlatformSurface(options = {}) {
     handoffsStatus: documentRef.getElementById("platform-handoffs-status"),
     handoffsEmpty: documentRef.getElementById("platform-handoffs-empty"),
     handoffsList: documentRef.getElementById("platform-handoffs-list"),
+    workItemsStatus: documentRef.getElementById("platform-work-items-status"),
+    workItemsTotal: documentRef.getElementById("platform-work-items-total"),
+    workItemsWaitingHuman: documentRef.getElementById("platform-work-items-waiting-human"),
+    workItemsWaitingAgent: documentRef.getElementById("platform-work-items-waiting-agent"),
+    workItemsQueued: documentRef.getElementById("platform-work-items-queued"),
+    workItemsEmpty: documentRef.getElementById("platform-work-items-empty"),
+    workItemsList: documentRef.getElementById("platform-work-items-list"),
+    workItemDetail: documentRef.getElementById("platform-work-item-detail"),
+    workItemActionStatus: documentRef.getElementById("platform-work-item-action-status"),
+    dispatchForm: documentRef.getElementById("platform-dispatch-form"),
+    dispatchAgentInput: documentRef.getElementById("platform-dispatch-agent-input"),
+    dispatchGoalInput: documentRef.getElementById("platform-dispatch-goal-input"),
+    dispatchSourceSelect: documentRef.getElementById("platform-dispatch-source-select"),
+    dispatchPrioritySelect: documentRef.getElementById("platform-dispatch-priority-select"),
+    dispatchSubmit: documentRef.getElementById("platform-dispatch-submit"),
+    workItemResponseForm: documentRef.getElementById("platform-work-item-response-form"),
+    workItemResponseDecision: documentRef.getElementById("platform-work-item-response-decision"),
+    workItemResponseInput: documentRef.getElementById("platform-work-item-response-input"),
+    workItemResponseSubmit: documentRef.getElementById("platform-work-item-response-submit"),
+    workItemEscalateForm: documentRef.getElementById("platform-work-item-escalate-form"),
+    workItemEscalateInput: documentRef.getElementById("platform-work-item-escalate-input"),
+    workItemEscalateSubmit: documentRef.getElementById("platform-work-item-escalate-submit"),
+    workItemCancelButton: documentRef.getElementById("platform-work-item-cancel-button"),
+    mailboxForm: documentRef.getElementById("platform-mailbox-form"),
+    mailboxAgentInput: documentRef.getElementById("platform-mailbox-agent-input"),
+    mailboxSubmit: documentRef.getElementById("platform-mailbox-submit"),
+    mailboxStatus: documentRef.getElementById("platform-mailbox-status"),
+    mailboxTotal: documentRef.getElementById("platform-mailbox-total"),
+    mailboxPending: documentRef.getElementById("platform-mailbox-pending"),
+    mailboxAcked: documentRef.getElementById("platform-mailbox-acked"),
+    mailboxEmpty: documentRef.getElementById("platform-mailbox-empty"),
+    mailboxList: documentRef.getElementById("platform-mailbox-list"),
+    mailboxDetail: documentRef.getElementById("platform-mailbox-detail"),
+    mailboxActionStatus: documentRef.getElementById("platform-mailbox-action-status"),
+    mailboxPullButton: documentRef.getElementById("platform-mailbox-pull-button"),
+    mailboxAckButton: documentRef.getElementById("platform-mailbox-ack-button"),
+    mailboxResponseForm: documentRef.getElementById("platform-mailbox-response-form"),
+    mailboxResponseDecision: documentRef.getElementById("platform-mailbox-response-decision"),
+    mailboxResponseInput: documentRef.getElementById("platform-mailbox-response-input"),
+    mailboxResponseSubmit: documentRef.getElementById("platform-mailbox-response-submit"),
     runsStatus: documentRef.getElementById("platform-runs-status"),
     runsTotal: documentRef.getElementById("platform-runs-total"),
     runsEmpty: documentRef.getElementById("platform-runs-empty"),
@@ -126,6 +173,17 @@ export function initializePlatformSurface(options = {}) {
     },
     selectedHandoffAgentId: "",
     handoffView: null,
+    workItems: [],
+    selectedWorkItemId: "",
+    selectedWorkItemDetail: null,
+    workItemActionMessage: "",
+    workItemActionPending: "",
+    mailboxAgentId: "",
+    mailboxAgent: null,
+    mailboxItems: [],
+    selectedMailboxEntryId: "",
+    mailboxActionMessage: "",
+    mailboxActionPending: "",
     runs: [],
     selectedRunId: "",
     selectedRunDetail: null,
@@ -133,6 +191,22 @@ export function initializePlatformSurface(options = {}) {
 
   if (dom.ownerInput) {
     dom.ownerInput.value = state.ownerPrincipalId;
+  }
+
+  if (dom.dispatchSourceSelect && !dom.dispatchSourceSelect.value) {
+    dom.dispatchSourceSelect.value = "human";
+  }
+
+  if (dom.dispatchPrioritySelect && !dom.dispatchPrioritySelect.value) {
+    dom.dispatchPrioritySelect.value = "normal";
+  }
+
+  if (dom.mailboxResponseDecision && !dom.mailboxResponseDecision.value) {
+    dom.mailboxResponseDecision.value = "approve";
+  }
+
+  if (dom.workItemResponseDecision && !dom.workItemResponseDecision.value) {
+    dom.workItemResponseDecision.value = "approve";
   }
 
   const render = () => {
@@ -147,10 +221,17 @@ export function initializePlatformSurface(options = {}) {
     const handoffItems = Array.isArray(state.handoffView?.handoffs)
       ? state.handoffView.handoffs
       : [];
+    const workItemSummary = summarizeWorkItems(state.workItems);
+    const mailboxSummary = summarizeMailboxItems(state.mailboxItems);
+    const selectedMailboxItem = state.mailboxItems.find(
+      (item) => item?.entry?.mailboxEntryId === state.selectedMailboxEntryId,
+    ) ?? null;
     const hasNodes = state.nodes.length > 0;
     const hasWaitingItems = state.waitingItems.length > 0;
     const hasCollaborationParents = collaborationParents.length > 0;
     const hasHandoffs = handoffItems.length > 0;
+    const hasWorkItems = state.workItems.length > 0;
+    const hasMailboxItems = state.mailboxItems.length > 0;
     const hasRuns = state.runs.length > 0;
     const nodesStatusMessage = state.loadErrorMessage
       ? state.loadErrorMessage
@@ -190,6 +271,40 @@ export function initializePlatformSurface(options = {}) {
           : state.ownerPrincipalId
             ? "当前还没有可查看的 handoff agent。"
             : "先填写 ownerPrincipalId，再查看当前平台 handoff 时间线。";
+    const workItemsStatusMessage = state.loadErrorMessage
+      ? state.loadErrorMessage
+      : state.loading
+        ? "正在读取当前平台 work-items。"
+        : state.ownerPrincipalId
+          ? `当前共有 ${workItemSummary.total} 条 work-item，其中排队中 ${workItemSummary.queued} 条。`
+          : "先填写 ownerPrincipalId，再查看当前平台 work-items。";
+    const selectedWorkItemLabel = state.selectedWorkItemDetail?.workItem?.goal
+      || state.selectedWorkItemDetail?.workItem?.workItemId
+      || state.selectedWorkItemId;
+    const workItemActionStatusMessage = state.workItemActionPending
+      ? `正在处理 work-item 动作：${state.workItemActionPending}`
+      : state.workItemActionMessage
+        ? state.workItemActionMessage
+        : selectedWorkItemLabel
+          ? `当前选中：${selectedWorkItemLabel}`
+          : "选择一条 work-item 后，可执行 respond / escalate / cancel。";
+    const mailboxAgentLabel = state.mailboxAgent?.displayName || state.mailboxAgentId;
+    const mailboxStatusMessage = state.loadErrorMessage
+      ? state.loadErrorMessage
+      : state.loading
+        ? "正在读取当前 agent mailbox。"
+        : mailboxAgentLabel
+          ? `当前正在查看 ${mailboxAgentLabel} 的 ${mailboxSummary.total} 条消息。`
+          : state.ownerPrincipalId
+            ? "可手动填写 agentId，或先选中一个 work-item 自动带出 agent。"
+            : "先填写 ownerPrincipalId，再查看当前 mailbox。";
+    const mailboxActionStatusMessage = state.mailboxActionPending
+      ? `正在处理 mailbox 动作：${state.mailboxActionPending}`
+      : state.mailboxActionMessage
+        ? state.mailboxActionMessage
+        : selectedMailboxItem?.entry?.mailboxEntryId
+          ? `当前选中消息：${selectedMailboxItem.entry.mailboxEntryId}`
+          : "选择一条消息后，可执行 pull / ack / respond。";
 
     if (dom.sessionTitle) {
       dom.sessionTitle.textContent = state.tokenLabel ? `已登录：${state.tokenLabel}` : "未启用平台 Web 鉴权";
@@ -207,6 +322,10 @@ export function initializePlatformSurface(options = {}) {
         : "如果你是从主 Themis 的兼容入口跳转过来的，这里通常会自动带上当前 ownerPrincipalId。";
     }
 
+    if (dom.mailboxAgentInput) {
+      dom.mailboxAgentInput.value = state.mailboxAgentId;
+    }
+
     if (dom.ownerSubmitButton) {
       dom.ownerSubmitButton.disabled = state.loading || Boolean(state.actionNodeId);
     }
@@ -214,6 +333,63 @@ export function initializePlatformSurface(options = {}) {
     if (dom.refreshButton) {
       dom.refreshButton.disabled = state.loading || Boolean(state.actionNodeId);
       dom.refreshButton.textContent = state.loading ? "刷新中..." : "刷新控制面";
+    }
+
+    if (dom.dispatchSubmit) {
+      dom.dispatchSubmit.disabled = state.loading || Boolean(state.workItemActionPending);
+      dom.dispatchSubmit.textContent = state.workItemActionPending === "dispatch" ? "派发中..." : "派发 work-item";
+    }
+
+    if (dom.workItemResponseSubmit) {
+      dom.workItemResponseSubmit.disabled = state.loading
+        || Boolean(state.workItemActionPending)
+        || !state.selectedWorkItemId;
+      dom.workItemResponseSubmit.textContent = state.workItemActionPending === "respond"
+        ? "处理中..."
+        : "Respond 当前项";
+    }
+
+    if (dom.workItemEscalateSubmit) {
+      dom.workItemEscalateSubmit.disabled = state.loading
+        || Boolean(state.workItemActionPending)
+        || !state.selectedWorkItemId;
+      dom.workItemEscalateSubmit.textContent = state.workItemActionPending === "escalate"
+        ? "升级中..."
+        : "Escalate 当前项";
+    }
+
+    if (dom.workItemCancelButton) {
+      dom.workItemCancelButton.disabled = state.loading
+        || Boolean(state.workItemActionPending)
+        || !state.selectedWorkItemId;
+      dom.workItemCancelButton.textContent = state.workItemActionPending === "cancel"
+        ? "取消中..."
+        : "Cancel 当前项";
+    }
+
+    if (dom.mailboxSubmit) {
+      dom.mailboxSubmit.disabled = state.loading || Boolean(state.mailboxActionPending);
+      dom.mailboxSubmit.textContent = state.mailboxActionPending === "load" ? "读取中..." : "加载 mailbox";
+    }
+
+    if (dom.mailboxPullButton) {
+      dom.mailboxPullButton.disabled = state.loading || Boolean(state.mailboxActionPending);
+      dom.mailboxPullButton.textContent = state.mailboxActionPending === "pull" ? "Pull 中..." : "Pull 下一条";
+    }
+
+    if (dom.mailboxAckButton) {
+      dom.mailboxAckButton.disabled = state.loading
+        || Boolean(state.mailboxActionPending)
+        || !state.selectedMailboxEntryId;
+    }
+
+    if (dom.mailboxResponseSubmit) {
+      dom.mailboxResponseSubmit.disabled = state.loading
+        || Boolean(state.mailboxActionPending)
+        || !state.selectedMailboxEntryId;
+      dom.mailboxResponseSubmit.textContent = state.mailboxActionPending === "respond"
+        ? "回复中..."
+        : "回复 mailbox";
     }
 
     if (dom.nodesStatus) {
@@ -352,6 +528,96 @@ export function initializePlatformSurface(options = {}) {
         : "";
     }
 
+    if (dom.workItemsStatus) {
+      dom.workItemsStatus.textContent = workItemsStatusMessage;
+    }
+
+    if (dom.workItemsTotal) {
+      dom.workItemsTotal.textContent = String(workItemSummary.total);
+    }
+
+    if (dom.workItemsWaitingHuman) {
+      dom.workItemsWaitingHuman.textContent = String(workItemSummary.waitingHuman);
+    }
+
+    if (dom.workItemsWaitingAgent) {
+      dom.workItemsWaitingAgent.textContent = String(workItemSummary.waitingAgent);
+    }
+
+    if (dom.workItemsQueued) {
+      dom.workItemsQueued.textContent = String(workItemSummary.queued);
+    }
+
+    if (dom.workItemsEmpty) {
+      dom.workItemsEmpty.hidden = hasWorkItems;
+      dom.workItemsEmpty.textContent = state.loadErrorMessage
+        ? "work-items 读取失败，请先排查平台控制面。"
+        : state.ownerPrincipalId
+          ? "当前 ownerPrincipalId 下还没有 work-items。"
+          : "先填写 ownerPrincipalId，再读取当前平台 work-items。";
+    }
+
+    if (dom.workItemsList) {
+      dom.workItemsList.innerHTML = hasWorkItems
+        ? state.workItems.map((item) => renderWorkItemCard(item, state.selectedWorkItemId)).join("")
+        : "";
+    }
+
+    if (dom.workItemDetail) {
+      dom.workItemDetail.innerHTML = state.selectedWorkItemDetail
+        ? renderWorkItemDetail(state.selectedWorkItemDetail)
+        : hasWorkItems
+          ? '<p class="platform-inline-note">点击任意 work-item 卡片，查看当前 detail。</p>'
+          : "";
+    }
+
+    if (dom.workItemActionStatus) {
+      dom.workItemActionStatus.textContent = workItemActionStatusMessage;
+    }
+
+    if (dom.mailboxStatus) {
+      dom.mailboxStatus.textContent = mailboxStatusMessage;
+    }
+
+    if (dom.mailboxTotal) {
+      dom.mailboxTotal.textContent = String(mailboxSummary.total);
+    }
+
+    if (dom.mailboxPending) {
+      dom.mailboxPending.textContent = String(mailboxSummary.pending);
+    }
+
+    if (dom.mailboxAcked) {
+      dom.mailboxAcked.textContent = String(mailboxSummary.acked);
+    }
+
+    if (dom.mailboxEmpty) {
+      dom.mailboxEmpty.hidden = hasMailboxItems;
+      dom.mailboxEmpty.textContent = state.loadErrorMessage
+        ? "mailbox 读取失败，请先排查平台控制面。"
+        : state.mailboxAgentId
+          ? `${state.mailboxAgentId} 当前还没有 mailbox 消息。`
+          : "先填写 agentId，再读取当前 mailbox。";
+    }
+
+    if (dom.mailboxList) {
+      dom.mailboxList.innerHTML = hasMailboxItems
+        ? state.mailboxItems.map((item) => renderMailboxItemCard(item, state.selectedMailboxEntryId)).join("")
+        : "";
+    }
+
+    if (dom.mailboxDetail) {
+      dom.mailboxDetail.innerHTML = selectedMailboxItem
+        ? renderMailboxDetail(selectedMailboxItem, state.mailboxAgent)
+        : hasMailboxItems
+          ? '<p class="platform-inline-note">点击任意消息卡片，查看当前 detail。</p>'
+          : "";
+    }
+
+    if (dom.mailboxActionStatus) {
+      dom.mailboxActionStatus.textContent = mailboxActionStatusMessage;
+    }
+
     if (dom.runsStatus) {
       dom.runsStatus.textContent = runsStatusMessage;
     }
@@ -422,6 +688,13 @@ export function initializePlatformSurface(options = {}) {
       };
       state.selectedHandoffAgentId = "";
       state.handoffView = null;
+      state.workItems = [];
+      state.selectedWorkItemId = "";
+      state.selectedWorkItemDetail = null;
+      state.mailboxAgentId = "";
+      state.mailboxAgent = null;
+      state.mailboxItems = [];
+      state.selectedMailboxEntryId = "";
       state.runs = [];
       state.selectedRunId = "";
       state.selectedRunDetail = null;
@@ -435,7 +708,14 @@ export function initializePlatformSurface(options = {}) {
     render();
 
     try {
-      const [nodesPayload, governancePayload, waitingPayload, collaborationPayload, runsPayload] = await Promise.all([
+      const [
+        nodesPayload,
+        governancePayload,
+        waitingPayload,
+        collaborationPayload,
+        runsPayload,
+        workItemsPayload,
+      ] = await Promise.all([
         requestPlatformJson(fetchFn, "/api/platform/nodes/list", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取节点列表失败。"),
@@ -451,6 +731,9 @@ export function initializePlatformSurface(options = {}) {
         requestPlatformJson(fetchFn, "/api/platform/runs/list", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取 recent runs 失败。"),
+        requestPlatformJson(fetchFn, "/api/platform/work-items/list", {
+          ownerPrincipalId: state.ownerPrincipalId,
+        }, "读取 work-items 失败。"),
       ]);
 
       state.nodes = Array.isArray(nodesPayload?.nodes) ? nodesPayload.nodes : [];
@@ -464,6 +747,7 @@ export function initializePlatformSurface(options = {}) {
         parents: Array.isArray(collaborationPayload?.parents) ? collaborationPayload.parents : [],
       };
       state.runs = Array.isArray(runsPayload?.runs) ? runsPayload.runs : [];
+      state.workItems = Array.isArray(workItemsPayload?.workItems) ? workItemsPayload.workItems : [];
 
       const availableHandoffAgentIds = state.collaborationDashboard.parents
         .map((parent) => normalizeOwnerPrincipalId(parent?.items?.[0]?.targetAgentId))
@@ -479,6 +763,45 @@ export function initializePlatformSurface(options = {}) {
           agentId: state.selectedHandoffAgentId,
         }, "读取 handoff 时间线失败。")
         : null;
+
+      if (!state.workItems.some((item) => item?.workItemId === state.selectedWorkItemId)) {
+        state.selectedWorkItemId = typeof state.workItems[0]?.workItemId === "string"
+          ? state.workItems[0].workItemId
+          : "";
+      }
+
+      state.selectedWorkItemDetail = state.selectedWorkItemId
+        ? await requestPlatformJson(fetchFn, "/api/platform/work-items/detail", {
+          ownerPrincipalId: state.ownerPrincipalId,
+          workItemId: state.selectedWorkItemId,
+        }, "读取 work-item detail 失败。")
+        : null;
+
+      const nextMailboxAgentId = resolvePreferredMailboxAgentId(
+        state.mailboxAgentId,
+        state.selectedWorkItemDetail,
+        state.workItems,
+      );
+      state.mailboxAgentId = nextMailboxAgentId;
+      state.mailboxAgent = null;
+      state.mailboxItems = [];
+      state.selectedMailboxEntryId = "";
+
+      if (dom.mailboxAgentInput) {
+        dom.mailboxAgentInput.value = state.mailboxAgentId;
+      }
+
+      if (state.mailboxAgentId) {
+        const mailboxPayload = await requestPlatformJson(fetchFn, "/api/platform/agents/mailbox/list", {
+          ownerPrincipalId: state.ownerPrincipalId,
+          agentId: state.mailboxAgentId,
+        }, "读取 mailbox 失败。");
+        state.mailboxAgent = mailboxPayload?.agent ?? null;
+        state.mailboxItems = Array.isArray(mailboxPayload?.items) ? mailboxPayload.items : [];
+        state.selectedMailboxEntryId = typeof state.mailboxItems[0]?.entry?.mailboxEntryId === "string"
+          ? state.mailboxItems[0].entry.mailboxEntryId
+          : "";
+      }
 
       if (!state.runs.some((run) => run?.runId === state.selectedRunId)) {
         state.selectedRunId = typeof state.runs[0]?.runId === "string" ? state.runs[0].runId : "";
@@ -503,6 +826,13 @@ export function initializePlatformSurface(options = {}) {
       };
       state.selectedHandoffAgentId = "";
       state.handoffView = null;
+      state.workItems = [];
+      state.selectedWorkItemId = "";
+      state.selectedWorkItemDetail = null;
+      state.mailboxAgentId = "";
+      state.mailboxAgent = null;
+      state.mailboxItems = [];
+      state.selectedMailboxEntryId = "";
       state.runs = [];
       state.selectedRunId = "";
       state.selectedRunDetail = null;
@@ -559,6 +889,334 @@ export function initializePlatformSurface(options = {}) {
     } finally {
       render();
     }
+  };
+
+  const loadWorkItemDetail = async (workItemId) => {
+    const normalizedWorkItemId = typeof workItemId === "string" ? workItemId.trim() : "";
+
+    if (!normalizedWorkItemId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.selectedWorkItemId = normalizedWorkItemId;
+    render();
+
+    try {
+      state.selectedWorkItemDetail = await requestPlatformJson(fetchFn, "/api/platform/work-items/detail", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        workItemId: normalizedWorkItemId,
+      }, "读取 work-item detail 失败。");
+      state.loadErrorMessage = "";
+
+      if (!state.mailboxAgentId) {
+        const preferredMailboxAgentId = resolvePreferredMailboxAgentId(
+          "",
+          state.selectedWorkItemDetail,
+          state.workItems,
+        );
+
+        if (preferredMailboxAgentId) {
+          await loadMailbox(preferredMailboxAgentId);
+          return;
+        }
+      }
+    } catch (error) {
+      state.selectedWorkItemDetail = null;
+      state.loadErrorMessage = error instanceof Error ? error.message : "读取 work-item detail 失败。";
+    } finally {
+      render();
+    }
+  };
+
+  const loadMailbox = async (agentId) => {
+    const normalizedAgentId = normalizeOwnerPrincipalId(agentId ?? dom.mailboxAgentInput?.value ?? state.mailboxAgentId);
+
+    if (!normalizedAgentId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.mailboxAgentId = normalizedAgentId;
+    state.mailboxActionPending = "load";
+    render();
+
+    try {
+      const payload = await requestPlatformJson(fetchFn, "/api/platform/agents/mailbox/list", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        agentId: normalizedAgentId,
+      }, "读取 mailbox 失败。");
+      state.mailboxAgent = payload?.agent ?? null;
+      state.mailboxItems = Array.isArray(payload?.items) ? payload.items : [];
+      state.selectedMailboxEntryId = state.mailboxItems.some(
+        (item) => item?.entry?.mailboxEntryId === state.selectedMailboxEntryId,
+      )
+        ? state.selectedMailboxEntryId
+        : (typeof state.mailboxItems[0]?.entry?.mailboxEntryId === "string"
+            ? state.mailboxItems[0].entry.mailboxEntryId
+            : "");
+      state.mailboxActionMessage = `已读取 ${normalizedAgentId} 的 mailbox。`;
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.mailboxAgent = null;
+      state.mailboxItems = [];
+      state.selectedMailboxEntryId = "";
+      state.mailboxActionMessage = error instanceof Error ? error.message : "读取 mailbox 失败。";
+    } finally {
+      state.mailboxActionPending = "";
+      render();
+    }
+  };
+
+  const dispatchWorkItem = async (workItem) => {
+    if (!state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    const normalizedGoal = typeof workItem?.goal === "string" ? workItem.goal.trim() : "";
+    const normalizedTargetAgentId = normalizeOwnerPrincipalId(workItem?.targetAgentId);
+    const normalizedSourceType = typeof workItem?.sourceType === "string" ? workItem.sourceType.trim() : "human";
+    const normalizedPriority = typeof workItem?.priority === "string" ? workItem.priority.trim() : "normal";
+
+    if (!normalizedGoal || !normalizedTargetAgentId) {
+      state.workItemActionMessage = "派发 work-item 需要 targetAgentId 和 goal。";
+      render();
+      return;
+    }
+
+    state.workItemActionPending = "dispatch";
+    render();
+
+    try {
+      const payload = await requestPlatformJson(fetchFn, "/api/platform/work-items/dispatch", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        workItem: {
+          targetAgentId: normalizedTargetAgentId,
+          sourceType: normalizedSourceType,
+          goal: normalizedGoal,
+          priority: normalizedPriority,
+        },
+      }, "派发 work-item 失败。");
+      const createdWorkItem = payload?.workItem;
+
+      if (createdWorkItem?.workItemId) {
+        state.workItems = [createdWorkItem, ...state.workItems.filter(
+          (item) => item?.workItemId !== createdWorkItem.workItemId,
+        )];
+        state.selectedWorkItemId = createdWorkItem.workItemId;
+        state.selectedWorkItemDetail = {
+          ...(state.selectedWorkItemDetail ?? {}),
+          workItem: createdWorkItem,
+          targetAgent: {
+            agentId: normalizedTargetAgentId,
+            displayName: normalizedTargetAgentId,
+          },
+        };
+      }
+
+      if (!state.mailboxAgentId) {
+        state.mailboxAgentId = normalizedTargetAgentId;
+      }
+
+      state.workItemActionMessage = createdWorkItem?.workItemId
+        ? `已派发 ${createdWorkItem.workItemId}。`
+        : "已派发 work-item。";
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.workItemActionMessage = error instanceof Error ? error.message : "派发 work-item 失败。";
+    } finally {
+      state.workItemActionPending = "";
+      render();
+    }
+  };
+
+  const respondWorkItem = async (workItemId, response) => {
+    const normalizedWorkItemId = typeof workItemId === "string" ? workItemId.trim() : "";
+
+    if (!normalizedWorkItemId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.workItemActionPending = "respond";
+    render();
+
+    try {
+      const payload = await requestPlatformJson(fetchFn, "/api/platform/work-items/respond", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        workItemId: normalizedWorkItemId,
+        response,
+      }, "响应 work-item 失败。");
+      mergeWorkItemIntoState(payload?.workItem, state);
+      state.workItemActionMessage = `已响应 ${normalizedWorkItemId}。`;
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.workItemActionMessage = error instanceof Error ? error.message : "响应 work-item 失败。";
+    } finally {
+      state.workItemActionPending = "";
+      render();
+    }
+  };
+
+  const escalateWorkItem = async (workItemId, escalation) => {
+    const normalizedWorkItemId = typeof workItemId === "string" ? workItemId.trim() : "";
+
+    if (!normalizedWorkItemId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.workItemActionPending = "escalate";
+    render();
+
+    try {
+      const payload = await requestPlatformJson(fetchFn, "/api/platform/work-items/escalate", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        workItemId: normalizedWorkItemId,
+        escalation,
+      }, "升级 work-item 失败。");
+      mergeWorkItemIntoState(payload?.workItem, state);
+      state.workItemActionMessage = `已升级 ${normalizedWorkItemId}。`;
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.workItemActionMessage = error instanceof Error ? error.message : "升级 work-item 失败。";
+    } finally {
+      state.workItemActionPending = "";
+      render();
+    }
+  };
+
+  const cancelWorkItem = async (workItemId) => {
+    const normalizedWorkItemId = typeof workItemId === "string" ? workItemId.trim() : "";
+
+    if (!normalizedWorkItemId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.workItemActionPending = "cancel";
+    render();
+
+    try {
+      const payload = await requestPlatformJson(fetchFn, "/api/platform/work-items/cancel", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        workItemId: normalizedWorkItemId,
+      }, "取消 work-item 失败。");
+      mergeWorkItemIntoState(payload?.workItem, state);
+      state.workItemActionMessage = `已取消 ${normalizedWorkItemId}。`;
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.workItemActionMessage = error instanceof Error ? error.message : "取消 work-item 失败。";
+    } finally {
+      state.workItemActionPending = "";
+      render();
+    }
+  };
+
+  const pullMailbox = async (agentId) => {
+    const normalizedAgentId = normalizeOwnerPrincipalId(agentId ?? state.mailboxAgentId);
+
+    if (!normalizedAgentId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.mailboxActionPending = "pull";
+    render();
+
+    try {
+      const payload = await requestPlatformJson(fetchFn, "/api/platform/agents/mailbox/pull", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        agentId: normalizedAgentId,
+      }, "pull mailbox 失败。");
+      const pulledItem = payload?.item ?? null;
+
+      if (pulledItem?.entry?.mailboxEntryId) {
+        upsertMailboxItem(state, pulledItem);
+        state.selectedMailboxEntryId = pulledItem.entry.mailboxEntryId;
+        state.mailboxActionMessage = `已 pull ${pulledItem.entry.mailboxEntryId}。`;
+      } else {
+        state.mailboxActionMessage = `当前没有可 pull 的 mailbox 消息。`;
+      }
+
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.mailboxActionMessage = error instanceof Error ? error.message : "pull mailbox 失败。";
+    } finally {
+      state.mailboxActionPending = "";
+      render();
+    }
+  };
+
+  const ackMailbox = async (agentId, mailboxEntryId) => {
+    const normalizedAgentId = normalizeOwnerPrincipalId(agentId ?? state.mailboxAgentId);
+    const normalizedMailboxEntryId = typeof mailboxEntryId === "string"
+      ? mailboxEntryId.trim()
+      : state.selectedMailboxEntryId;
+
+    if (!normalizedAgentId || !normalizedMailboxEntryId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.mailboxActionPending = "ack";
+    render();
+
+    try {
+      const payload = await requestPlatformJson(fetchFn, "/api/platform/agents/mailbox/ack", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        agentId: normalizedAgentId,
+        mailboxEntryId: normalizedMailboxEntryId,
+      }, "ack mailbox 失败。");
+      mergeMailboxEntryIntoState(state, payload?.mailboxEntry);
+      state.mailboxActionMessage = `已确认 ${normalizedMailboxEntryId}。`;
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.mailboxActionMessage = error instanceof Error ? error.message : "ack mailbox 失败。";
+    } finally {
+      state.mailboxActionPending = "";
+      render();
+    }
+  };
+
+  const respondMailbox = async (agentId, mailboxEntryId, response) => {
+    const normalizedAgentId = normalizeOwnerPrincipalId(agentId ?? state.mailboxAgentId);
+    const normalizedMailboxEntryId = typeof mailboxEntryId === "string"
+      ? mailboxEntryId.trim()
+      : state.selectedMailboxEntryId;
+
+    if (!normalizedAgentId || !normalizedMailboxEntryId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.mailboxActionPending = "respond";
+    render();
+
+    try {
+      const payload = await requestPlatformJson(fetchFn, "/api/platform/agents/mailbox/respond", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        agentId: normalizedAgentId,
+        mailboxEntryId: normalizedMailboxEntryId,
+        response,
+      }, "回复 mailbox 失败。");
+      mergeMailboxEntryIntoState(state, payload?.sourceMailboxEntry);
+      upsertMailboxItem(state, {
+        entry: payload?.responseMailboxEntry,
+        message: payload?.responseMessage,
+      });
+      mergeWorkItemIntoState(payload?.resumedWorkItem, state);
+      state.mailboxActionMessage = `已回复 ${normalizedMailboxEntryId}。`;
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.mailboxActionMessage = error instanceof Error ? error.message : "回复 mailbox 失败。";
+    } finally {
+      state.mailboxActionPending = "";
+      render();
+    }
+  };
+
+  const selectMailboxEntry = (mailboxEntryId) => {
+    const normalizedMailboxEntryId = typeof mailboxEntryId === "string" ? mailboxEntryId.trim() : "";
+
+    if (!normalizedMailboxEntryId) {
+      return;
+    }
+
+    state.selectedMailboxEntryId = normalizedMailboxEntryId;
+    render();
   };
 
   const updateNodeStatus = async (nodeId, action) => {
@@ -646,6 +1304,88 @@ export function initializePlatformSurface(options = {}) {
     }
   });
 
+  dom.dispatchForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void dispatchWorkItem({
+      targetAgentId: dom.dispatchAgentInput?.value ?? "",
+      goal: dom.dispatchGoalInput?.value ?? "",
+      sourceType: dom.dispatchSourceSelect?.value ?? "human",
+      priority: dom.dispatchPrioritySelect?.value ?? "normal",
+    });
+  });
+
+  dom.workItemsList?.addEventListener("click", (event) => {
+    const workItemCard = event.target instanceof HTMLElement
+      ? event.target.closest("[data-platform-work-item-id]")
+      : null;
+
+    if (!workItemCard) {
+      return;
+    }
+
+    const workItemId = workItemCard.getAttribute("data-platform-work-item-id");
+
+    if (workItemId) {
+      void loadWorkItemDetail(workItemId);
+    }
+  });
+
+  dom.workItemResponseForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void respondWorkItem(state.selectedWorkItemId, {
+      decision: dom.workItemResponseDecision?.value ?? "approve",
+      inputText: dom.workItemResponseInput?.value ?? "",
+    });
+  });
+
+  dom.workItemEscalateForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void escalateWorkItem(state.selectedWorkItemId, {
+      inputText: dom.workItemEscalateInput?.value ?? "",
+    });
+  });
+
+  dom.workItemCancelButton?.addEventListener("click", () => {
+    void cancelWorkItem(state.selectedWorkItemId);
+  });
+
+  dom.mailboxForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void loadMailbox(dom.mailboxAgentInput?.value ?? "");
+  });
+
+  dom.mailboxList?.addEventListener("click", (event) => {
+    const mailboxCard = event.target instanceof HTMLElement
+      ? event.target.closest("[data-platform-mailbox-entry-id]")
+      : null;
+
+    if (!mailboxCard) {
+      return;
+    }
+
+    const mailboxEntryId = mailboxCard.getAttribute("data-platform-mailbox-entry-id");
+
+    if (mailboxEntryId) {
+      selectMailboxEntry(mailboxEntryId);
+    }
+  });
+
+  dom.mailboxPullButton?.addEventListener("click", () => {
+    void pullMailbox(state.mailboxAgentId);
+  });
+
+  dom.mailboxAckButton?.addEventListener("click", () => {
+    void ackMailbox(state.mailboxAgentId, state.selectedMailboxEntryId);
+  });
+
+  dom.mailboxResponseForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void respondMailbox(state.mailboxAgentId, state.selectedMailboxEntryId, {
+      decision: dom.mailboxResponseDecision?.value ?? "approve",
+      inputText: dom.mailboxResponseInput?.value ?? "",
+    });
+  });
+
   dom.runsList?.addEventListener("click", (event) => {
     const runCard = event.target instanceof HTMLElement
       ? event.target.closest("[data-platform-run-id]")
@@ -674,7 +1414,17 @@ export function initializePlatformSurface(options = {}) {
     loadNodes: loadPlatformData,
     loadPlatformData,
     loadAgentHandoffs,
+    loadWorkItemDetail,
+    loadMailbox,
     loadRunDetail,
+    dispatchWorkItem,
+    respondWorkItem,
+    escalateWorkItem,
+    cancelWorkItem,
+    pullMailbox,
+    ackMailbox,
+    respondMailbox,
+    selectMailboxEntry,
     updateNodeStatus,
     render,
   };
@@ -762,6 +1512,116 @@ function renderWaitingItemCard(item) {
       最近更新时间：${escapeHtml(formatTimestamp(item?.updatedAt))}
     </p>
   </article>`;
+}
+
+function renderWorkItemCard(item, selectedWorkItemId) {
+  const chips = [
+    item?.workItemId ? item.workItemId : "",
+    item?.status ? `状态 ${resolveWorkItemStatusLabel(item.status)}` : "",
+    item?.priority ? `优先级 ${resolvePriorityLabel(item.priority)}` : "",
+    item?.targetAgentId ? `目标 ${item.targetAgentId}` : "",
+  ].filter(Boolean);
+  const selected = typeof item?.workItemId === "string" && item.workItemId === selectedWorkItemId;
+
+  return `<article
+    class="platform-work-item-card"
+    data-platform-work-item-id="${escapeHtml(item?.workItemId || "")}"
+    data-selected="${selected ? "true" : "false"}"
+  >
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(item?.goal || item?.workItemId || "未命名 work-item")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">最近更新时间：${escapeHtml(formatTimestamp(item?.updatedAt))}</p>
+  </article>`;
+}
+
+function renderWorkItemDetail(detail) {
+  const chips = [
+    detail?.workItem?.workItemId ? detail.workItem.workItemId : "",
+    detail?.workItem?.status ? `状态 ${resolveWorkItemStatusLabel(detail.workItem.status)}` : "",
+    detail?.workItem?.priority ? `优先级 ${resolvePriorityLabel(detail.workItem.priority)}` : "",
+    detail?.workItem?.sourceType ? `来源 ${detail.workItem.sourceType}` : "",
+    detail?.workItem?.waitingFor ? `等待 ${detail.workItem.waitingFor}` : "",
+    detail?.targetAgent?.displayName ? `目标 ${detail.targetAgent.displayName}` : "",
+  ].filter(Boolean);
+  const parentDescriptor = [
+    detail?.parentWorkItem?.goal || detail?.parentWorkItem?.displayName || "",
+    detail?.parentWorkItem?.workItemId || "",
+  ].filter(Boolean).join(" / ") || "无";
+  const latestHandoffLabel = detail?.latestHandoff?.summary || detail?.latestHandoff?.handoffId || "暂无";
+
+  return `<div>
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(detail?.workItem?.goal || detail?.workItem?.workItemId || "未命名 work-item")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">父任务：${escapeHtml(parentDescriptor)}</p>
+    <p class="platform-inline-note">最近 handoff：${escapeHtml(latestHandoffLabel)}</p>
+    <p class="platform-inline-note">最近更新时间：${escapeHtml(formatTimestamp(detail?.workItem?.updatedAt))}</p>
+  </div>`;
+}
+
+function renderMailboxItemCard(item, selectedMailboxEntryId) {
+  const entry = item?.entry ?? {};
+  const message = item?.message ?? {};
+  const chips = [
+    entry?.mailboxEntryId ? entry.mailboxEntryId : "",
+    entry?.status ? `状态 ${resolveMailboxStatusLabel(entry.status)}` : "",
+    entry?.priority ? `优先级 ${resolvePriorityLabel(entry.priority)}` : "",
+    message?.messageType ? `类型 ${resolveMessageTypeLabel(message.messageType)}` : "",
+  ].filter(Boolean);
+  const selected = typeof entry?.mailboxEntryId === "string" && entry.mailboxEntryId === selectedMailboxEntryId;
+
+  return `<article
+    class="platform-mailbox-card"
+    data-platform-mailbox-entry-id="${escapeHtml(entry?.mailboxEntryId || "")}"
+    data-selected="${selected ? "true" : "false"}"
+  >
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(message?.summary || entry?.mailboxEntryId || "未命名消息")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">最近更新时间：${escapeHtml(formatTimestamp(entry?.updatedAt || message?.updatedAt))}</p>
+  </article>`;
+}
+
+function renderMailboxDetail(item, agent) {
+  const entry = item?.entry ?? {};
+  const message = item?.message ?? {};
+  const chips = [
+    entry?.mailboxEntryId ? entry.mailboxEntryId : "",
+    entry?.status ? `状态 ${resolveMailboxStatusLabel(entry.status)}` : "",
+    agent?.displayName ? `Agent ${agent.displayName}` : "",
+    message?.fromAgentId ? `来自 ${message.fromAgentId}` : "",
+  ].filter(Boolean);
+  const summary = readMessageSummary(message);
+
+  return `<div>
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(summary || entry?.mailboxEntryId || "未命名消息")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">消息类型：${escapeHtml(resolveMessageTypeLabel(message?.messageType))}</p>
+    <p class="platform-inline-note">关联 work-item：${escapeHtml(message?.workItemId || entry?.workItemId || "暂无")}</p>
+    <p class="platform-inline-note">最近更新时间：${escapeHtml(formatTimestamp(entry?.updatedAt || message?.updatedAt))}</p>
+  </div>`;
 }
 
 function renderCollaborationParentCard(parent, selectedHandoffAgentId) {
@@ -935,6 +1795,133 @@ function normalizeGovernanceSummary(summary) {
   };
 }
 
+function summarizeWorkItems(items) {
+  const summary = { ...EMPTY_WORK_ITEM_SUMMARY };
+
+  for (const item of Array.isArray(items) ? items : []) {
+    summary.total += 1;
+
+    if (item?.status === "waiting_human") {
+      summary.waitingHuman += 1;
+      continue;
+    }
+
+    if (item?.status === "waiting_agent") {
+      summary.waitingAgent += 1;
+      continue;
+    }
+
+    if (item?.status === "queued") {
+      summary.queued += 1;
+    }
+  }
+
+  return summary;
+}
+
+function summarizeMailboxItems(items) {
+  const summary = {
+    total: 0,
+    pending: 0,
+    acked: 0,
+  };
+
+  for (const item of Array.isArray(items) ? items : []) {
+    summary.total += 1;
+
+    if (item?.entry?.status === "acked") {
+      summary.acked += 1;
+      continue;
+    }
+
+    summary.pending += 1;
+  }
+
+  return summary;
+}
+
+function resolvePreferredMailboxAgentId(currentMailboxAgentId, selectedWorkItemDetail, workItems) {
+  const normalizedCurrent = normalizeOwnerPrincipalId(currentMailboxAgentId);
+
+  if (normalizedCurrent) {
+    return normalizedCurrent;
+  }
+
+  const detailTargetAgentId = normalizeOwnerPrincipalId(
+    selectedWorkItemDetail?.targetAgent?.agentId || selectedWorkItemDetail?.workItem?.targetAgentId,
+  );
+
+  if (detailTargetAgentId) {
+    return detailTargetAgentId;
+  }
+
+  return normalizeOwnerPrincipalId(workItems?.[0]?.targetAgentId);
+}
+
+function mergeWorkItemIntoState(workItem, state) {
+  if (!workItem?.workItemId) {
+    return;
+  }
+
+  state.workItems = state.workItems.some((item) => item?.workItemId === workItem.workItemId)
+    ? state.workItems.map((item) => item?.workItemId === workItem.workItemId ? { ...item, ...workItem } : item)
+    : [workItem, ...state.workItems];
+
+  if (state.selectedWorkItemId === workItem.workItemId) {
+    state.selectedWorkItemDetail = {
+      ...(state.selectedWorkItemDetail ?? {}),
+      workItem: {
+        ...(state.selectedWorkItemDetail?.workItem ?? {}),
+        ...workItem,
+      },
+    };
+  }
+}
+
+function mergeMailboxEntryIntoState(state, mailboxEntry) {
+  if (!mailboxEntry?.mailboxEntryId) {
+    return;
+  }
+
+  state.mailboxItems = state.mailboxItems.map((item) => item?.entry?.mailboxEntryId === mailboxEntry.mailboxEntryId
+    ? {
+      ...item,
+      entry: {
+        ...(item.entry ?? {}),
+        ...mailboxEntry,
+      },
+    }
+    : item);
+}
+
+function upsertMailboxItem(state, mailboxItem) {
+  if (!mailboxItem?.entry?.mailboxEntryId) {
+    return;
+  }
+
+  const nextItem = {
+    entry: mailboxItem.entry,
+    message: mailboxItem.message ?? {},
+  };
+
+  state.mailboxItems = state.mailboxItems.some(
+    (item) => item?.entry?.mailboxEntryId === mailboxItem.entry.mailboxEntryId,
+  )
+    ? state.mailboxItems.map((item) => item?.entry?.mailboxEntryId === mailboxItem.entry.mailboxEntryId
+      ? {
+        entry: {
+          ...(item.entry ?? {}),
+          ...(mailboxItem.entry ?? {}),
+        },
+        message: {
+          ...(item.message ?? {}),
+          ...(mailboxItem.message ?? {}),
+        },
+      }
+      : item)
+    : [nextItem, ...state.mailboxItems];
+}
+
 function resolveNodeStatusLabel(status) {
   switch (status) {
     case "online":
@@ -972,6 +1959,69 @@ function resolvePriorityLabel(priority) {
     default:
       return "";
   }
+}
+
+function resolveWorkItemStatusLabel(status) {
+  switch (status) {
+    case "queued":
+      return "排队中";
+    case "waiting_human":
+      return "等人处理";
+    case "waiting_agent":
+      return "等 agent";
+    case "cancelled":
+      return "已取消";
+    case "completed":
+      return "已完成";
+    default:
+      return typeof status === "string" ? status : "";
+  }
+}
+
+function resolveMailboxStatusLabel(status) {
+  switch (status) {
+    case "pending":
+      return "待处理";
+    case "leased":
+      return "已领取";
+    case "acked":
+      return "已确认";
+    case "expired":
+      return "已过期";
+    default:
+      return typeof status === "string" ? status : "";
+  }
+}
+
+function resolveMessageTypeLabel(messageType) {
+  switch (messageType) {
+    case "approval_request":
+      return "审批请求";
+    case "approval_result":
+      return "审批结果";
+    case "handoff":
+      return "交接";
+    default:
+      return typeof messageType === "string" && messageType.trim()
+        ? messageType.trim()
+        : "未标注";
+  }
+}
+
+function readMessageSummary(message) {
+  if (typeof message?.summary === "string" && message.summary.trim()) {
+    return message.summary.trim();
+  }
+
+  if (typeof message?.payload?.summary === "string" && message.payload.summary.trim()) {
+    return message.payload.summary.trim();
+  }
+
+  if (typeof message?.payload?.inputText === "string" && message.payload.inputText.trim()) {
+    return message.payload.inputText.trim();
+  }
+
+  return "";
 }
 
 function resolveRunStatusLabel(status) {

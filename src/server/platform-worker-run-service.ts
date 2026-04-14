@@ -19,6 +19,17 @@ export interface PlatformWorkerRunService {
   completeRun(payload: ManagedAgentPlatformWorkerRunCompletePayload): ManagedAgentPlatformWorkerRunMutationResult | null;
   listRuns(payload: ManagedAgentPlatformRunListPayload): ManagedAgentPlatformRunListResult;
   getRunDetail(payload: ManagedAgentPlatformRunDetailPayload): ManagedAgentPlatformRunDetailResult | null;
+  getAssignedRunByWorkItem(input: {
+    ownerPrincipalId: string;
+    workItemId: string;
+  }): ManagedAgentPlatformWorkerAssignedRunResult | null;
+  updateAssignedRunByWorkItem(input: {
+    ownerPrincipalId: string;
+    workItemId: string;
+    workItemPatch?: Partial<ManagedAgentPlatformWorkerAssignedRunResult["workItem"]>;
+    runPatch?: Partial<ManagedAgentPlatformWorkerAssignedRunResult["run"]>;
+    executionLeasePatch?: Partial<ManagedAgentPlatformWorkerAssignedRunResult["executionLease"]>;
+  }): ManagedAgentPlatformWorkerAssignedRunResult | null;
   listAssignedRuns(input: {
     ownerPrincipalId: string;
     organizationId?: string;
@@ -178,6 +189,43 @@ export function createInMemoryPlatformWorkerRunService(
       };
     },
 
+    getAssignedRunByWorkItem(input) {
+      const assignedRun = findAssignedRunByWorkItem(assignedRuns, input.ownerPrincipalId, input.workItemId);
+      return assignedRun ? cloneAssignedRun(assignedRun) : null;
+    },
+
+    updateAssignedRunByWorkItem(input) {
+      const assignedRun = findAssignedRunByWorkItem(assignedRuns, input.ownerPrincipalId, input.workItemId);
+
+      if (!assignedRun) {
+        return null;
+      }
+
+      if (input.workItemPatch) {
+        assignedRun.workItem = {
+          ...assignedRun.workItem,
+          ...input.workItemPatch,
+        };
+      }
+
+      if (input.runPatch) {
+        assignedRun.run = {
+          ...assignedRun.run,
+          ...input.runPatch,
+        };
+      }
+
+      if (input.executionLeasePatch) {
+        assignedRun.executionLease = {
+          ...assignedRun.executionLease,
+          ...input.executionLeasePatch,
+        };
+      }
+
+      assignedRuns.set(assignedRun.run.runId, cloneAssignedRun(assignedRun));
+      return cloneAssignedRun(assignedRun);
+    },
+
     listAssignedRuns(input) {
       const ownerPrincipalId = input.ownerPrincipalId.trim();
       const organizationId = typeof input.organizationId === "string" ? input.organizationId.trim() : "";
@@ -218,6 +266,23 @@ function requireOwnedAssignedRun(
   }
 
   return assignedRun;
+}
+
+function findAssignedRunByWorkItem(
+  assignedRuns: Map<string, ManagedAgentPlatformWorkerAssignedRunResult>,
+  ownerPrincipalId: string,
+  workItemId: string,
+): ManagedAgentPlatformWorkerAssignedRunResult | null {
+  for (const assignedRun of assignedRuns.values()) {
+    if (
+      assignedRun.organization.ownerPrincipalId === ownerPrincipalId
+      && assignedRun.workItem.workItemId === workItemId
+    ) {
+      return assignedRun;
+    }
+  }
+
+  return null;
 }
 
 function buildRunMutationResult(

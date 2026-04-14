@@ -150,6 +150,256 @@
         <section class="platform-panel">
           <div class="platform-panel-head">
             <div>
+              <p class="platform-panel-kicker">Workflow</p>
+              <h2>Work Items</h2>
+            </div>
+            <p class="platform-panel-copy">
+              当前开始由独立 `themis-platform` 页面承接 work-items 的最小读写闭环，包含列表、详情、派发、响应、升级与取消。
+            </p>
+          </div>
+
+          <div class="platform-summary-grid">
+            <article class="platform-summary-card">
+              <span>总数</span>
+              <strong id="platform-work-items-total">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>等人</span>
+              <strong id="platform-work-items-waiting-human">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>等 agent</span>
+              <strong id="platform-work-items-waiting-agent">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>排队中</span>
+              <strong id="platform-work-items-queued">0</strong>
+            </article>
+          </div>
+
+          <p id="platform-work-items-status" class="platform-inline-note">
+            还没有读取 work-items。
+          </p>
+          <p id="platform-work-item-action-status" class="platform-inline-note">
+            可在详情面板里对当前选中的 work-item 执行 respond / escalate / cancel。
+          </p>
+
+          <div class="platform-form-stack">
+            <article class="platform-form-card">
+              <div class="platform-form-head">
+                <div>
+                  <p class="platform-panel-kicker">Dispatch</p>
+                  <h3>新建 work-item</h3>
+                </div>
+              </div>
+
+              <form id="platform-dispatch-form" class="platform-action-grid">
+                <label class="platform-field">
+                  <span>targetAgentId</span>
+                  <input
+                    id="platform-dispatch-agent-input"
+                    type="text"
+                    placeholder="例如：agent-delta"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="platform-field">
+                  <span>goal</span>
+                  <input
+                    id="platform-dispatch-goal-input"
+                    type="text"
+                    placeholder="例如：等待单独排队的前端任务"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="platform-field">
+                  <span>sourceType</span>
+                  <select id="platform-dispatch-source-select">
+                    <option value="human">human</option>
+                    <option value="agent">agent</option>
+                    <option value="system">system</option>
+                  </select>
+                </label>
+                <label class="platform-field">
+                  <span>priority</span>
+                  <select id="platform-dispatch-priority-select">
+                    <option value="normal">normal</option>
+                    <option value="urgent">urgent</option>
+                    <option value="high">high</option>
+                    <option value="low">low</option>
+                  </select>
+                </label>
+                <button id="platform-dispatch-submit" type="submit" class="platform-button">派发 work-item</button>
+              </form>
+            </article>
+          </div>
+
+          <div class="platform-split-grid">
+            <div>
+              <p id="platform-work-items-empty" class="platform-empty-state">
+                先填写 ownerPrincipalId，再读取当前平台 work-items。
+              </p>
+              <div id="platform-work-items-list" class="platform-work-items-list"></div>
+            </div>
+            <div>
+              <div id="platform-work-item-detail" class="platform-card-detail"></div>
+
+              <article class="platform-form-card platform-form-card--secondary">
+                <div class="platform-form-head">
+                  <div>
+                    <p class="platform-panel-kicker">Respond</p>
+                    <h3>处理当前 work-item</h3>
+                  </div>
+                </div>
+
+                <form id="platform-work-item-response-form" class="platform-action-grid platform-action-grid--compact">
+                  <label class="platform-field">
+                    <span>decision</span>
+                    <select id="platform-work-item-response-decision">
+                      <option value="approve">approve</option>
+                      <option value="reject">reject</option>
+                      <option value="revise">revise</option>
+                    </select>
+                  </label>
+                  <label class="platform-field platform-field--span-full">
+                    <span>inputText</span>
+                    <textarea
+                      id="platform-work-item-response-input"
+                      rows="4"
+                      placeholder="例如：已确认，可以继续执行。"
+                    ></textarea>
+                  </label>
+                  <button id="platform-work-item-response-submit" type="submit" class="platform-button">
+                    Respond 当前项
+                  </button>
+                </form>
+
+                <form id="platform-work-item-escalate-form" class="platform-action-grid platform-action-grid--compact">
+                  <label class="platform-field platform-field--span-full">
+                    <span>escalation input</span>
+                    <textarea
+                      id="platform-work-item-escalate-input"
+                      rows="3"
+                      placeholder="例如：请平台 owner 接手。"
+                    ></textarea>
+                  </label>
+                  <button id="platform-work-item-escalate-submit" type="submit" class="platform-button subtle">
+                    Escalate 当前项
+                  </button>
+                  <button id="platform-work-item-cancel-button" type="button" class="platform-button subtle">
+                    Cancel 当前项
+                  </button>
+                </form>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="platform-panel">
+          <div class="platform-panel-head">
+            <div>
+              <p class="platform-panel-kicker">Mailbox</p>
+              <h2>Agent Inbox</h2>
+            </div>
+            <p class="platform-panel-copy">
+              当前页面会按 agent 视角读取 mailbox，并提供最小的 pull / ack / respond 闭环。
+            </p>
+          </div>
+
+          <form id="platform-mailbox-form" class="platform-owner-form">
+            <label class="platform-field">
+              <span>agentId</span>
+              <input
+                id="platform-mailbox-agent-input"
+                type="text"
+                placeholder="例如：agent-delta"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </label>
+            <button id="platform-mailbox-submit" type="submit" class="platform-button">加载 mailbox</button>
+          </form>
+
+          <div class="platform-summary-grid platform-summary-grid--compact-three">
+            <article class="platform-summary-card">
+              <span>消息总数</span>
+              <strong id="platform-mailbox-total">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>待处理</span>
+              <strong id="platform-mailbox-pending">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>已确认</span>
+              <strong id="platform-mailbox-acked">0</strong>
+            </article>
+          </div>
+
+          <p id="platform-mailbox-status" class="platform-inline-note">
+            还没有读取 mailbox。
+          </p>
+          <p id="platform-mailbox-action-status" class="platform-inline-note">
+            选择一条消息后，可执行 pull / ack / respond。
+          </p>
+
+          <div class="platform-inline-actions">
+            <button id="platform-mailbox-pull-button" type="button" class="platform-button subtle">
+              Pull 下一条
+            </button>
+            <button id="platform-mailbox-ack-button" type="button" class="platform-button subtle">
+              Ack 当前消息
+            </button>
+          </div>
+
+          <div class="platform-split-grid">
+            <div>
+              <p id="platform-mailbox-empty" class="platform-empty-state">
+                先填写 agentId，再读取当前 mailbox。
+              </p>
+              <div id="platform-mailbox-list" class="platform-mailbox-list"></div>
+            </div>
+            <div>
+              <div id="platform-mailbox-detail" class="platform-card-detail"></div>
+
+              <article class="platform-form-card platform-form-card--secondary">
+                <div class="platform-form-head">
+                  <div>
+                    <p class="platform-panel-kicker">Respond</p>
+                    <h3>回复当前 mailbox</h3>
+                  </div>
+                </div>
+
+                <form id="platform-mailbox-response-form" class="platform-action-grid platform-action-grid--compact">
+                  <label class="platform-field">
+                    <span>decision</span>
+                    <select id="platform-mailbox-response-decision">
+                      <option value="approve">approve</option>
+                      <option value="reject">reject</option>
+                      <option value="revise">revise</option>
+                    </select>
+                  </label>
+                  <label class="platform-field platform-field--span-full">
+                    <span>inputText</span>
+                    <textarea
+                      id="platform-mailbox-response-input"
+                      rows="4"
+                      placeholder="例如：已确认，可以继续执行。"
+                    ></textarea>
+                  </label>
+                  <button id="platform-mailbox-response-submit" type="submit" class="platform-button">
+                    回复 mailbox
+                  </button>
+                </form>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="platform-panel">
+          <div class="platform-panel-head">
+            <div>
               <p class="platform-panel-kicker">Collaboration</p>
               <h2>Parent Tasks & Handoffs</h2>
             </div>

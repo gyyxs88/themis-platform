@@ -82,6 +82,168 @@ test("initializePlatformSurface 会对节点治理动作调用对应平台接口
   });
 });
 
+test("initializePlatformSurface 会对 work-item 与 mailbox 动作调用对应平台接口", async () => {
+  const requests = [];
+  const document = createDocumentStub();
+  const surface = initializePlatformSurface({
+    document,
+    fetch: async (url, init = {}) => {
+      requests.push({
+        url,
+        method: init.method ?? "GET",
+        body: init.body ? JSON.parse(init.body) : null,
+      });
+
+      if (url === "/api/web-auth/status") {
+        return createJsonResponse(200, { authenticated: false, tokenLabel: "" });
+      }
+
+      if (url === "/api/platform/work-items/list") {
+        return createJsonResponse(200, {
+          workItems: [{
+            workItemId: "work-item-1",
+            goal: "等待人工审批是否继续发布",
+            targetAgentId: "agent-delta",
+            status: "waiting_human",
+            priority: "urgent",
+            updatedAt: "2026-04-14T10:10:00.000Z",
+          }],
+        });
+      }
+
+      if (url === "/api/platform/work-items/detail") {
+        return createJsonResponse(200, {
+          workItem: {
+            workItemId: "work-item-1",
+            goal: "等待人工审批是否继续发布",
+            targetAgentId: "agent-delta",
+            status: "waiting_human",
+            priority: "urgent",
+          },
+          targetAgent: {
+            agentId: "agent-delta",
+            displayName: "Agent Delta",
+          },
+        });
+      }
+
+      if (url === "/api/platform/agents/mailbox/list") {
+        return createJsonResponse(200, {
+          agent: {
+            agentId: "agent-delta",
+            displayName: "Agent Delta",
+          },
+          items: [{
+            entry: {
+              mailboxEntryId: "mailbox-1",
+              ownerAgentId: "agent-delta",
+              status: "pending",
+            },
+            message: {
+              messageId: "message-1",
+              summary: "请确认是否继续发布。",
+            },
+          }],
+        });
+      }
+
+      if (url === "/api/platform/work-items/dispatch") {
+        return createJsonResponse(200, {
+          workItem: {
+            workItemId: "work-item-2",
+            goal: "新建平台待办",
+            targetAgentId: "agent-delta",
+            status: "queued",
+            priority: "high",
+            updatedAt: "2026-04-14T10:12:00.000Z",
+          },
+        });
+      }
+
+      if (url === "/api/platform/work-items/respond") {
+        return createJsonResponse(200, {
+          workItem: {
+            workItemId: "work-item-1",
+            status: "queued",
+          },
+        });
+      }
+
+      if (url === "/api/platform/agents/mailbox/respond") {
+        return createJsonResponse(200, {
+          responseMessage: {
+            messageId: "message-2",
+            messageType: "approval_result",
+          },
+        });
+      }
+
+      return createJsonResponse(200, { nodes: [], runs: [] });
+    },
+    storage: {
+      getItem() {
+        return "principal-owner";
+      },
+      setItem() {},
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  requests.length = 0;
+
+  await surface.dispatchWorkItem({
+    targetAgentId: "agent-delta",
+    sourceType: "human",
+    goal: "新建平台待办",
+    priority: "high",
+  });
+  await surface.respondWorkItem("work-item-1", {
+    decision: "approve",
+    inputText: "可以继续执行。",
+  });
+  await surface.respondMailbox("agent-delta", "mailbox-1", {
+    decision: "approve",
+    inputText: "已确认，可以继续。",
+  });
+
+  assert.deepEqual(requests.slice(-3), [{
+    url: "/api/platform/work-items/dispatch",
+    method: "POST",
+    body: {
+      ownerPrincipalId: "principal-owner",
+      workItem: {
+        targetAgentId: "agent-delta",
+        sourceType: "human",
+        goal: "新建平台待办",
+        priority: "high",
+      },
+    },
+  }, {
+    url: "/api/platform/work-items/respond",
+    method: "POST",
+    body: {
+      ownerPrincipalId: "principal-owner",
+      workItemId: "work-item-1",
+      response: {
+        decision: "approve",
+        inputText: "可以继续执行。",
+      },
+    },
+  }, {
+    url: "/api/platform/agents/mailbox/respond",
+    method: "POST",
+    body: {
+      ownerPrincipalId: "principal-owner",
+      agentId: "agent-delta",
+      mailboxEntryId: "mailbox-1",
+      response: {
+        decision: "approve",
+        inputText: "已确认，可以继续。",
+      },
+    },
+  }]);
+});
+
 test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent runs", async () => {
   const document = createDocumentStub();
   initializePlatformSurface({
@@ -221,6 +383,72 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
         });
       }
 
+      if (url === "/api/platform/work-items/list") {
+        return createJsonResponse(200, {
+          workItems: [
+            {
+              workItemId: "work-item-2",
+              goal: "等待单独排队的前端任务",
+              status: "queued",
+              priority: "normal",
+              targetAgentId: "agent-delta",
+              updatedAt: "2026-04-14T10:15:00.000Z",
+            },
+          ],
+        });
+      }
+
+      if (url === "/api/platform/work-items/detail") {
+        return createJsonResponse(200, {
+          workItem: {
+            workItemId: "work-item-2",
+            goal: "等待单独排队的前端任务",
+            status: "queued",
+            priority: "normal",
+            targetAgentId: "agent-delta",
+            sourceType: "human",
+            updatedAt: "2026-04-14T10:15:00.000Z",
+          },
+          targetAgent: {
+            agentId: "agent-delta",
+            displayName: "Agent Delta",
+          },
+          parentWorkItem: {
+            workItemId: "parent-work-item-1",
+            goal: "平台父任务",
+          },
+          latestHandoff: {
+            handoffId: "handoff-work-item-2",
+            summary: "前端工作项已进入独立排队。",
+          },
+        });
+      }
+
+      if (url === "/api/platform/agents/mailbox/list") {
+        return createJsonResponse(200, {
+          agent: {
+            agentId: "agent-delta",
+            displayName: "Agent Delta",
+          },
+          items: [
+            {
+              entry: {
+                mailboxEntryId: "mailbox-delta-1",
+                ownerAgentId: "agent-delta",
+                status: "pending",
+                priority: "urgent",
+                updatedAt: "2026-04-14T10:16:00.000Z",
+              },
+              message: {
+                messageId: "message-delta-1",
+                summary: "请确认是否继续发布。",
+                messageType: "approval_request",
+              },
+            },
+          ],
+        });
+      }
+
       return createJsonResponse(404, {
         error: {
           message: "unexpected request",
@@ -257,6 +485,15 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
   assert.match(document.getElementById("platform-runs-list").innerHTML, /run-1/);
   assert.match(document.getElementById("platform-run-detail").innerHTML, /确认是否允许继续发布/);
   assert.equal(document.getElementById("platform-runs-empty").hidden, true);
+  assert.equal(document.getElementById("platform-work-items-total").textContent, "1");
+  assert.equal(document.getElementById("platform-work-items-queued").textContent, "1");
+  assert.match(document.getElementById("platform-work-items-list").innerHTML, /等待单独排队的前端任务/);
+  assert.match(document.getElementById("platform-work-item-detail").innerHTML, /parent-work-item-1/);
+  assert.equal(document.getElementById("platform-work-items-empty").hidden, true);
+  assert.equal(document.getElementById("platform-mailbox-total").textContent, "1");
+  assert.match(document.getElementById("platform-mailbox-list").innerHTML, /请确认是否继续发布/);
+  assert.match(document.getElementById("platform-mailbox-status").textContent, /Agent Delta/);
+  assert.equal(document.getElementById("platform-mailbox-empty").hidden, true);
 });
 
 test("summarizeReclaimResult 会归一化 reclaim summary", () => {
@@ -333,6 +570,31 @@ function createDocumentStub() {
     "platform-runs-empty",
     "platform-runs-list",
     "platform-run-detail",
+    "platform-work-items-status",
+    "platform-work-items-total",
+    "platform-work-items-waiting-human",
+    "platform-work-items-waiting-agent",
+    "platform-work-items-queued",
+    "platform-work-items-empty",
+    "platform-work-items-list",
+    "platform-work-item-detail",
+    "platform-work-item-action-status",
+    "platform-dispatch-form",
+    "platform-dispatch-agent-input",
+    "platform-dispatch-goal-input",
+    "platform-dispatch-source-select",
+    "platform-dispatch-priority-select",
+    "platform-dispatch-submit",
+    "platform-mailbox-form",
+    "platform-mailbox-agent-input",
+    "platform-mailbox-submit",
+    "platform-mailbox-status",
+    "platform-mailbox-total",
+    "platform-mailbox-pending",
+    "platform-mailbox-acked",
+    "platform-mailbox-empty",
+    "platform-mailbox-list",
+    "platform-mailbox-action-status",
   ];
 
   for (const id of ids) {

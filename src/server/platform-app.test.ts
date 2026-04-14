@@ -5,6 +5,7 @@ import { createPlatformApp } from "./platform-app.js";
 import { createInMemoryPlatformCollaborationService } from "./platform-collaboration-service.js";
 import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformWorkerRunService } from "./platform-worker-run-service.js";
+import { createInMemoryPlatformWorkflowService } from "./platform-workflow-service.js";
 
 test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契约响应", async () => {
   const nodeService = createInMemoryPlatformNodeService({
@@ -249,10 +250,121 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
       }],
     }],
   });
+  const workflowService = createInMemoryPlatformWorkflowService({
+    workerRunService,
+    now: () => "2026-04-14T09:40:00.000Z",
+    agentSeeds: [{
+      ownerPrincipalId: "principal-platform-owner",
+      organization: {
+        organizationId: "org-platform",
+        ownerPrincipalId: "principal-platform-owner",
+        displayName: "Platform Team",
+        slug: "platform-team",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+      agent: {
+        agentId: "agent-delta",
+        organizationId: "org-platform",
+        displayName: "Agent Delta",
+        departmentRole: "Frontend",
+        status: "active",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+    }],
+    parentSeeds: [{
+      ownerPrincipalId: "principal-platform-owner",
+      organizationId: "org-platform",
+      parentWorkItemId: "parent-work-item-platform",
+      displayName: "平台父任务",
+      childWorkItemIds: ["work-item-beta", "work-item-gamma"],
+    }],
+    handoffSeeds: [{
+      ownerPrincipalId: "principal-platform-owner",
+      organizationId: "org-platform",
+      agentId: "agent-beta",
+      handoffs: [{
+        handoffId: "handoff-beta",
+        fromAgentId: "agent-alpha",
+        toAgentId: "agent-beta",
+        workItemId: "work-item-beta",
+        summary: "平台经理已补齐上下文并交接给执行 agent。",
+        blockers: ["等待人工确认"],
+        recommendedNextActions: ["确认执行边界", "恢复执行"],
+        attachedArtifacts: ["artifact-platform-beta"],
+        createdAt: "2026-04-14T09:18:00.000Z",
+        updatedAt: "2026-04-14T09:18:00.000Z",
+      }],
+      timeline: [{
+        entryId: "timeline-beta",
+        kind: "handoff",
+        title: "平台经理交接",
+        summary: "平台经理已补齐上下文并交接给执行 agent。",
+        workItemId: "work-item-beta",
+        handoffId: "handoff-beta",
+        counterpartyAgentId: "agent-alpha",
+        counterpartyDisplayName: "Agent Alpha",
+        createdAt: "2026-04-14T09:18:00.000Z",
+        updatedAt: "2026-04-14T09:18:00.000Z",
+      }],
+    }],
+    mailboxSeeds: [{
+      ownerPrincipalId: "principal-platform-owner",
+      organization: {
+        organizationId: "org-platform",
+        ownerPrincipalId: "principal-platform-owner",
+        displayName: "Platform Team",
+        slug: "platform-team",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+      agent: {
+        agentId: "agent-delta",
+        organizationId: "org-platform",
+        displayName: "Agent Delta",
+        departmentRole: "Frontend",
+        status: "active",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+      entry: {
+        mailboxEntryId: "mailbox-delta-1",
+        organizationId: "org-platform",
+        ownerAgentId: "agent-delta",
+        agentId: "agent-delta",
+        messageId: "message-delta-1",
+        workItemId: "work-item-gamma",
+        priority: "urgent",
+        status: "pending",
+        requiresAck: true,
+        availableAt: "2026-04-14T09:24:00.000Z",
+        createdAt: "2026-04-14T09:24:00.000Z",
+        updatedAt: "2026-04-14T09:24:00.000Z",
+      },
+      message: {
+        messageId: "message-delta-1",
+        organizationId: "org-platform",
+        fromAgentId: "agent-beta",
+        toAgentId: "agent-delta",
+        workItemId: "work-item-gamma",
+        messageType: "approval_request",
+        payload: {
+          summary: "请确认是否继续发布。",
+        },
+        artifactRefs: [],
+        priority: "urgent",
+        requiresAck: true,
+        createdAt: "2026-04-14T09:24:00.000Z",
+        updatedAt: "2026-04-14T09:24:00.000Z",
+      },
+    }],
+  });
   const server = createPlatformApp({
     nodeService,
     workerRunService,
     collaborationService,
+    workflowService,
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -594,6 +706,196 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     assert.equal(handoffListPayload.timeline?.[0]?.kind, "handoff");
     assert.equal(handoffListPayload.timeline?.[0]?.title, "平台经理交接");
 
+    const workItemsList = await fetch(`${baseUrl}/api/platform/work-items/list`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+      }),
+    });
+    assert.equal(workItemsList.status, 200);
+    const workItemsListPayload = await workItemsList.json() as {
+      workItems?: Array<{ workItemId?: string; status?: string }>;
+    };
+    assert.equal(workItemsListPayload.workItems?.[0]?.workItemId, "work-item-beta");
+
+    const workItemDetail = await fetch(`${baseUrl}/api/platform/work-items/detail`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItemId: "work-item-beta",
+      }),
+    });
+    assert.equal(workItemDetail.status, 200);
+    const workItemDetailPayload = await workItemDetail.json() as {
+      workItem?: { workItemId?: string };
+      parentWorkItem?: { workItemId?: string } | null;
+      latestHandoff?: { handoffId?: string } | null;
+    };
+    assert.equal(workItemDetailPayload.workItem?.workItemId, "work-item-beta");
+    assert.equal(workItemDetailPayload.parentWorkItem?.workItemId, "parent-work-item-platform");
+    assert.equal(workItemDetailPayload.latestHandoff?.handoffId, "handoff-beta");
+
+    const workItemDispatch = await fetch(`${baseUrl}/api/platform/work-items/dispatch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItem: {
+          targetAgentId: "agent-delta",
+          sourceType: "human",
+          goal: "新建一条平台前端待办。",
+          priority: "high",
+        },
+      }),
+    });
+    assert.equal(workItemDispatch.status, 200);
+    const workItemDispatchPayload = await workItemDispatch.json() as {
+      workItem?: { workItemId?: string; targetAgentId?: string; status?: string };
+    };
+    assert.equal(workItemDispatchPayload.workItem?.targetAgentId, "agent-delta");
+    assert.equal(workItemDispatchPayload.workItem?.status, "queued");
+
+    const workItemRespond = await fetch(`${baseUrl}/api/platform/work-items/respond`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItemId: "work-item-beta",
+        response: {
+          decision: "approve",
+          inputText: "可以继续。",
+        },
+      }),
+    });
+    assert.equal(workItemRespond.status, 200);
+    const workItemRespondPayload = await workItemRespond.json() as {
+      workItem?: { status?: string };
+      message?: { messageType?: string };
+    };
+    assert.equal(workItemRespondPayload.workItem?.status, "queued");
+    assert.equal(workItemRespondPayload.message?.messageType, "approval_result");
+
+    const workItemEscalate = await fetch(`${baseUrl}/api/platform/work-items/escalate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItemId: "work-item-gamma",
+        escalation: {
+          inputText: "请 owner 接手。",
+        },
+      }),
+    });
+    assert.equal(workItemEscalate.status, 200);
+    const workItemEscalatePayload = await workItemEscalate.json() as {
+      workItem?: { status?: string };
+    };
+    assert.equal(workItemEscalatePayload.workItem?.status, "waiting_human");
+
+    const workItemCancel = await fetch(`${baseUrl}/api/platform/work-items/cancel`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItemId: workItemDispatchPayload.workItem?.workItemId,
+      }),
+    });
+    assert.equal(workItemCancel.status, 200);
+    const workItemCancelPayload = await workItemCancel.json() as {
+      workItem?: { status?: string };
+    };
+    assert.equal(workItemCancelPayload.workItem?.status, "cancelled");
+
+    const mailboxList = await fetch(`${baseUrl}/api/platform/agents/mailbox/list`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agentId: "agent-delta",
+      }),
+    });
+    assert.equal(mailboxList.status, 200);
+    const mailboxListPayload = await mailboxList.json() as {
+      items?: Array<{ entry?: { mailboxEntryId?: string } }>;
+    };
+    assert.equal(mailboxListPayload.items?.[0]?.entry?.mailboxEntryId, "mailbox-delta-1");
+
+    const mailboxPull = await fetch(`${baseUrl}/api/platform/agents/mailbox/pull`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agentId: "agent-delta",
+      }),
+    });
+    assert.equal(mailboxPull.status, 200);
+    const mailboxPullPayload = await mailboxPull.json() as {
+      item?: { entry?: { status?: string; mailboxEntryId?: string } } | null;
+    };
+    assert.equal(mailboxPullPayload.item?.entry?.mailboxEntryId, "mailbox-delta-1");
+    assert.equal(mailboxPullPayload.item?.entry?.status, "leased");
+
+    const mailboxAck = await fetch(`${baseUrl}/api/platform/agents/mailbox/ack`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agentId: "agent-delta",
+        mailboxEntryId: "mailbox-delta-1",
+      }),
+    });
+    assert.equal(mailboxAck.status, 200);
+    const mailboxAckPayload = await mailboxAck.json() as {
+      mailboxEntry?: { status?: string };
+    };
+    assert.equal(mailboxAckPayload.mailboxEntry?.status, "acked");
+
+    const mailboxRespond = await fetch(`${baseUrl}/api/platform/agents/mailbox/respond`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agentId: "agent-delta",
+        mailboxEntryId: "mailbox-delta-1",
+        response: {
+          decision: "approve",
+          inputText: "可以继续执行。",
+          priority: "urgent",
+        },
+      }),
+    });
+    assert.equal(mailboxRespond.status, 200);
+    const mailboxRespondPayload = await mailboxRespond.json() as {
+      responseMessage?: { messageType?: string };
+      responseMailboxEntry?: { ownerAgentId?: string };
+      resumedWorkItem?: { status?: string };
+    };
+    assert.equal(mailboxRespondPayload.responseMessage?.messageType, "approval_result");
+    assert.equal(mailboxRespondPayload.responseMailboxEntry?.ownerAgentId, "agent-beta");
+    assert.equal(mailboxRespondPayload.resumedWorkItem?.status, "queued");
+
     const runsList = await fetch(`${baseUrl}/api/platform/runs/list`, {
       method: "POST",
       headers: {
@@ -609,6 +911,24 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     };
     assert.deepEqual(runsListPayload.runs, [
       {
+        runId: "run-gamma",
+        organizationId: "org-platform",
+        workItemId: "work-item-gamma",
+        nodeId: "node-alpha",
+        status: "interrupted",
+        createdAt: "2026-04-14T09:25:00.000Z",
+        updatedAt: "2026-04-14T09:40:00.000Z",
+      },
+      {
+        runId: "run-beta",
+        organizationId: "org-platform",
+        workItemId: "work-item-beta",
+        nodeId: "node-alpha",
+        status: "interrupted",
+        createdAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:40:00.000Z",
+      },
+      {
         runId: "run-alpha",
         organizationId: "org-platform",
         workItemId: "work-item-alpha",
@@ -616,24 +936,6 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
         status: "created",
         createdAt: "2026-04-14T09:35:00.000Z",
         updatedAt: "2026-04-14T09:35:00.000Z",
-      },
-      {
-        runId: "run-gamma",
-        organizationId: "org-platform",
-        workItemId: "work-item-gamma",
-        nodeId: "node-alpha",
-        status: "waiting_action",
-        createdAt: "2026-04-14T09:25:00.000Z",
-        updatedAt: "2026-04-14T09:25:00.000Z",
-      },
-      {
-        runId: "run-beta",
-        organizationId: "org-platform",
-        workItemId: "work-item-beta",
-        nodeId: "node-alpha",
-        status: "waiting_action",
-        createdAt: "2026-04-14T09:20:00.000Z",
-        updatedAt: "2026-04-14T09:20:00.000Z",
       },
     ]);
 
@@ -667,9 +969,9 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
         organizationId: "org-platform",
         workItemId: "work-item-beta",
         nodeId: "node-alpha",
-        status: "waiting_action",
+        status: "interrupted",
         createdAt: "2026-04-14T09:20:00.000Z",
-        updatedAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:40:00.000Z",
       },
       workItem: {
         workItemId: "work-item-beta",
@@ -677,11 +979,11 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
         targetAgentId: "agent-beta",
         sourceType: "human",
         goal: "Review waiting human escalation.",
-        status: "waiting_human",
+        status: "queued",
         priority: "urgent",
-        waitingFor: "human",
+        waitingFor: null,
         createdAt: "2026-04-14T09:20:00.000Z",
-        updatedAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:40:00.000Z",
       },
       targetAgent: {
         agentId: "agent-beta",

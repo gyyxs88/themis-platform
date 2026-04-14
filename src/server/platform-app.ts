@@ -17,9 +17,21 @@ import type {
 } from "themis-contracts/managed-agent-platform-agents";
 import type {
   ManagedAgentPlatformHandoffListPayload,
+  ManagedAgentPlatformMailboxAckPayload,
+  ManagedAgentPlatformMailboxListPayload,
+  ManagedAgentPlatformMailboxPullPayload,
+  ManagedAgentPlatformMailboxRespondPayload,
   ManagedAgentPlatformRunDetailPayload,
   ManagedAgentPlatformRunListPayload,
 } from "themis-contracts/managed-agent-platform-collaboration";
+import type {
+  ManagedAgentPlatformWorkItemCancelPayload,
+  ManagedAgentPlatformWorkItemDetailPayload,
+  ManagedAgentPlatformWorkItemDispatchPayload,
+  ManagedAgentPlatformWorkItemEscalatePayload,
+  ManagedAgentPlatformWorkItemListPayload,
+  ManagedAgentPlatformWorkItemRespondPayload,
+} from "themis-contracts/managed-agent-platform-work-items";
 import { readPlatformAsset } from "./platform-assets.js";
 import {
   createInMemoryPlatformCollaborationService,
@@ -28,6 +40,7 @@ import {
 import { createInMemoryPlatformGovernanceService, type PlatformGovernanceService } from "./platform-governance-service.js";
 import { createInMemoryPlatformNodeService, type PlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformWorkerRunService, type PlatformWorkerRunService } from "./platform-worker-run-service.js";
+import { createInMemoryPlatformWorkflowService, type PlatformWorkflowService } from "./platform-workflow-service.js";
 
 export interface PlatformAppOptions {
   serviceName?: string;
@@ -35,6 +48,7 @@ export interface PlatformAppOptions {
   workerRunService?: PlatformWorkerRunService;
   governanceService?: PlatformGovernanceService;
   collaborationService?: PlatformCollaborationService;
+  workflowService?: PlatformWorkflowService;
   webAuthTokenLabel?: string;
 }
 
@@ -50,6 +64,9 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
   const collaborationService = options.collaborationService ?? createInMemoryPlatformCollaborationService({
     workerRunService,
   });
+  const workflowService = options.workflowService ?? createInMemoryPlatformWorkflowService({
+    workerRunService,
+  });
   const webAuthTokenLabel = options.webAuthTokenLabel ?? "";
 
   return createServer((request, response) => {
@@ -59,6 +76,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       workerRunService,
       governanceService,
       collaborationService,
+      workflowService,
       webAuthTokenLabel,
     });
   });
@@ -70,6 +88,7 @@ interface HandlePlatformRequestOptions {
   workerRunService: PlatformWorkerRunService;
   governanceService: PlatformGovernanceService;
   collaborationService: PlatformCollaborationService;
+  workflowService: PlatformWorkflowService;
   webAuthTokenLabel: string;
 }
 
@@ -175,6 +194,80 @@ async function handlePlatformRequest(
       return result
         ? writeJson(response, 200, result)
         : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/mailbox/list") {
+      const payload = await readJsonBody<ManagedAgentPlatformMailboxListPayload>(request);
+      const result = options.workflowService.listMailbox(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/mailbox/pull") {
+      const payload = await readJsonBody<ManagedAgentPlatformMailboxPullPayload>(request);
+      const result = options.workflowService.pullMailbox(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/mailbox/ack") {
+      const payload = await readJsonBody<ManagedAgentPlatformMailboxAckPayload>(request);
+      const result = options.workflowService.ackMailbox(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Mailbox entry ${payload.mailboxEntryId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/mailbox/respond") {
+      const payload = await readJsonBody<ManagedAgentPlatformMailboxRespondPayload>(request);
+      const result = options.workflowService.respondMailbox(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Mailbox entry ${payload.mailboxEntryId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/work-items/list") {
+      const payload = await readJsonBody<ManagedAgentPlatformWorkItemListPayload>(request);
+      return writeJson(response, 200, options.workflowService.listWorkItems(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/work-items/detail") {
+      const payload = await readJsonBody<ManagedAgentPlatformWorkItemDetailPayload>(request);
+      const result = options.workflowService.getWorkItemDetail(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/work-items/dispatch") {
+      const payload = await readJsonBody<ManagedAgentPlatformWorkItemDispatchPayload>(request);
+      return writeJson(response, 200, options.workflowService.dispatchWorkItem(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/work-items/cancel") {
+      const payload = await readJsonBody<ManagedAgentPlatformWorkItemCancelPayload>(request);
+      const result = options.workflowService.cancelWorkItem(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/work-items/respond") {
+      const payload = await readJsonBody<ManagedAgentPlatformWorkItemRespondPayload>(request);
+      const result = options.workflowService.respondToWorkItem(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/work-items/escalate") {
+      const payload = await readJsonBody<ManagedAgentPlatformWorkItemEscalatePayload>(request);
+      const result = options.workflowService.escalateWorkItem(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/runs/list") {

@@ -26,7 +26,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -163,6 +165,12 @@ input {
   margin-top: 18px;
 }
 
+.platform-form-stack {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
 .platform-field {
   display: grid;
   gap: 6px;
@@ -173,7 +181,9 @@ input {
   font-size: 13px;
 }
 
-.platform-field input {
+.platform-field input,
+.platform-field select,
+.platform-field textarea {
   min-height: 48px;
   padding: 0 14px;
   border: 1px solid var(--platform-line);
@@ -182,7 +192,15 @@ input {
   color: var(--platform-text);
 }
 
-.platform-field input:focus-visible {
+.platform-field textarea {
+  min-height: 110px;
+  padding: 12px 14px;
+  resize: vertical;
+}
+
+.platform-field input:focus-visible,
+.platform-field select:focus-visible,
+.platform-field textarea:focus-visible {
   outline: none;
   border-color: rgba(35, 83, 71, 0.4);
   box-shadow:
@@ -203,6 +221,10 @@ input {
 
 .platform-summary-grid--compact-two {
   grid-template-columns: repeat(2, minmax(0, 220px));
+}
+
+.platform-summary-grid--compact-three {
+  grid-template-columns: repeat(3, minmax(0, 220px));
 }
 
 .platform-summary-card {
@@ -231,12 +253,21 @@ input {
 
 .platform-hotspots-list,
 .platform-waiting-list,
+.platform-work-items-list,
+.platform-mailbox-list,
 .platform-collaboration-list,
 .platform-handoffs-list,
 .platform-runs-list {
   display: grid;
   gap: 12px;
   margin-top: 18px;
+}
+
+.platform-split-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 16px;
+  margin-top: 16px;
 }
 
 .platform-empty-state {
@@ -249,9 +280,52 @@ input {
 .platform-collaboration-card,
 .platform-handoff-card,
 .platform-run-card,
-.platform-run-detail {
+.platform-run-detail,
+.platform-work-item-card,
+.platform-mailbox-card,
+.platform-card-detail,
+.platform-form-card {
   padding: 18px 20px;
   background: var(--platform-card);
+}
+
+.platform-card-detail {
+  min-height: 132px;
+}
+
+.platform-form-card {
+  margin-top: 16px;
+}
+
+.platform-form-card--secondary {
+  background: linear-gradient(180deg, rgba(255, 252, 247, 0.96), rgba(248, 243, 233, 0.94));
+}
+
+.platform-form-head h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.platform-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.platform-action-grid--compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.platform-field--span-full {
+  grid-column: 1 / -1;
+}
+
+.platform-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
 }
 
 .platform-node-head {
@@ -304,6 +378,12 @@ input {
 
 .platform-run-card:hover,
 .platform-run-card:focus-visible,
+.platform-mailbox-card:hover,
+.platform-mailbox-card:focus-visible,
+.platform-mailbox-card[data-selected="true"],
+.platform-work-item-card:hover,
+.platform-work-item-card:focus-visible,
+.platform-work-item-card[data-selected="true"],
 .platform-collaboration-card:hover,
 .platform-collaboration-card:focus-visible,
 .platform-collaboration-card[data-selected="true"],
@@ -367,6 +447,14 @@ input {
   .platform-summary-grid--compact-two {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .platform-summary-grid--compact-three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .platform-split-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -386,11 +474,19 @@ input {
     grid-template-columns: 1fr;
   }
 
+  .platform-action-grid {
+    grid-template-columns: 1fr;
+  }
+
   .platform-summary-grid {
     grid-template-columns: 1fr;
   }
 
   .platform-summary-grid--compact-two {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-summary-grid--compact-three {
     grid-template-columns: 1fr;
   }
 }
