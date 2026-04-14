@@ -1,0 +1,161 @@
+import assert from "node:assert/strict";
+import { once } from "node:events";
+import test from "node:test";
+import { createPlatformApp } from "./platform-app.js";
+import { createInMemoryPlatformControlPlaneService } from "./platform-control-plane-service.js";
+
+test("createPlatformApp 会暴露 agents 与 projects 最小控制面路由", async () => {
+  const controlPlaneService = createInMemoryPlatformControlPlaneService({
+    now: () => "2026-04-14T14:10:00.000Z",
+    generateOrganizationId: () => "org-platform",
+    generatePrincipalId: () => "principal-agent-alpha",
+    generateAgentId: () => "agent-alpha",
+  });
+  const server = createPlatformApp({
+    controlPlaneService,
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  try {
+    const address = server.address();
+    assert(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const createResponse = await fetch(`${baseUrl}/api/platform/agents/create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agent: {
+          departmentRole: "Platform",
+          displayName: "平台值班员",
+          mission: "负责平台控制面最小治理。",
+        },
+      }),
+    });
+    assert.equal(createResponse.status, 200);
+    const created = await createResponse.json() as {
+      agent?: { agentId?: string };
+    };
+    assert.equal(created.agent?.agentId, "agent-alpha");
+
+    const listResponse = await fetch(`${baseUrl}/api/platform/agents/list`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+      }),
+    });
+    assert.equal(listResponse.status, 200);
+    const listed = await listResponse.json() as {
+      agents?: Array<{ agentId?: string }>;
+    };
+    assert.equal(listed.agents?.[0]?.agentId, "agent-alpha");
+
+    const detailResponse = await fetch(`${baseUrl}/api/platform/agents/detail`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agentId: "agent-alpha",
+      }),
+    });
+    assert.equal(detailResponse.status, 200);
+
+    const boundaryResponse = await fetch(`${baseUrl}/api/platform/agents/execution-boundary/update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agentId: "agent-alpha",
+        boundary: {
+          workspacePolicy: {
+            canonicalWorkspacePath: "/srv/platform-alpha",
+          },
+          runtimeProfile: {
+            provider: "openai",
+            model: "gpt-5.4-mini",
+          },
+        },
+      }),
+    });
+    assert.equal(boundaryResponse.status, 200);
+
+    const spawnPolicyResponse = await fetch(`${baseUrl}/api/platform/agents/spawn-policy/update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        policy: {
+          enabled: true,
+          maxAgentsPerRole: 2,
+        },
+      }),
+    });
+    assert.equal(spawnPolicyResponse.status, 200);
+
+    const pauseResponse = await fetch(`${baseUrl}/api/platform/agents/pause`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agentId: "agent-alpha",
+      }),
+    });
+    assert.equal(pauseResponse.status, 200);
+    const paused = await pauseResponse.json() as {
+      agent?: { status?: string };
+    };
+    assert.equal(paused.agent?.status, "paused");
+
+    const bindingResponse = await fetch(`${baseUrl}/api/platform/projects/workspace-binding/upsert`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        binding: {
+          projectId: "project-site-foo",
+          organizationId: "org-platform",
+          displayName: "官网 site-foo",
+          canonicalWorkspacePath: "/srv/platform-alpha",
+          preferredNodeId: "node-alpha",
+          continuityMode: "sticky",
+        },
+      }),
+    });
+    assert.equal(bindingResponse.status, 200);
+
+    const bindingListResponse = await fetch(`${baseUrl}/api/platform/projects/workspace-binding/list`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+      }),
+    });
+    assert.equal(bindingListResponse.status, 200);
+    const bindings = await bindingListResponse.json() as {
+      bindings?: Array<{ projectId?: string }>;
+    };
+    assert.equal(bindings.bindings?.[0]?.projectId, "project-site-foo");
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});

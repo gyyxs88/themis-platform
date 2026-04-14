@@ -11,8 +11,13 @@ import type {
   ManagedAgentPlatformWorkerRunStatusPayload,
 } from "themis-contracts/managed-agent-platform-worker";
 import type {
+  ManagedAgentPlatformAgentCreatePayload,
+  ManagedAgentPlatformAgentDetailPayload,
+  ManagedAgentPlatformAgentExecutionBoundaryUpdatePayload,
+  ManagedAgentPlatformAgentLifecyclePayload,
   ManagedAgentPlatformCollaborationDashboardPayload,
   ManagedAgentPlatformGovernanceFiltersPayload,
+  ManagedAgentPlatformAgentSpawnPolicyUpdatePayload,
   ManagedAgentPlatformWaitingQueueListPayload,
 } from "themis-contracts/managed-agent-platform-agents";
 import type {
@@ -32,11 +37,20 @@ import type {
   ManagedAgentPlatformWorkItemListPayload,
   ManagedAgentPlatformWorkItemRespondPayload,
 } from "themis-contracts/managed-agent-platform-work-items";
+import type {
+  ManagedAgentPlatformProjectWorkspaceBindingDetailPayload,
+  ManagedAgentPlatformProjectWorkspaceBindingListPayload,
+  ManagedAgentPlatformProjectWorkspaceBindingUpsertPayload,
+} from "themis-contracts/managed-agent-platform-projects";
 import { readPlatformAsset } from "./platform-assets.js";
 import {
   createInMemoryPlatformCollaborationService,
   type PlatformCollaborationService,
 } from "./platform-collaboration-service.js";
+import {
+  createInMemoryPlatformControlPlaneService,
+  type PlatformControlPlaneService,
+} from "./platform-control-plane-service.js";
 import { createInMemoryPlatformGovernanceService, type PlatformGovernanceService } from "./platform-governance-service.js";
 import { createInMemoryPlatformNodeService, type PlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformWorkerRunService, type PlatformWorkerRunService } from "./platform-worker-run-service.js";
@@ -49,6 +63,7 @@ export interface PlatformAppOptions {
   governanceService?: PlatformGovernanceService;
   collaborationService?: PlatformCollaborationService;
   workflowService?: PlatformWorkflowService;
+  controlPlaneService?: PlatformControlPlaneService;
   webAuthTokenLabel?: string;
 }
 
@@ -67,6 +82,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
   const workflowService = options.workflowService ?? createInMemoryPlatformWorkflowService({
     workerRunService,
   });
+  const controlPlaneService = options.controlPlaneService ?? createInMemoryPlatformControlPlaneService();
   const webAuthTokenLabel = options.webAuthTokenLabel ?? "";
 
   return createServer((request, response) => {
@@ -77,6 +93,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       governanceService,
       collaborationService,
       workflowService,
+      controlPlaneService,
       webAuthTokenLabel,
     });
   });
@@ -89,6 +106,7 @@ interface HandlePlatformRequestOptions {
   governanceService: PlatformGovernanceService;
   collaborationService: PlatformCollaborationService;
   workflowService: PlatformWorkflowService;
+  controlPlaneService: PlatformControlPlaneService;
   webAuthTokenLabel: string;
 }
 
@@ -178,6 +196,61 @@ async function handlePlatformRequest(
       return writeJson(response, 200, options.governanceService.getGovernanceOverview(payload));
     }
 
+    if (method === "POST" && url.pathname === "/api/platform/agents/list") {
+      const payload = await readJsonBody<{ ownerPrincipalId: string }>(request);
+      return writeJson(response, 200, options.controlPlaneService.listAgents(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/detail") {
+      const payload = await readJsonBody<ManagedAgentPlatformAgentDetailPayload>(request);
+      const result = options.controlPlaneService.getAgentDetail(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/create") {
+      const payload = await readJsonBody<ManagedAgentPlatformAgentCreatePayload>(request);
+      return writeJson(response, 200, options.controlPlaneService.createAgent(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/execution-boundary/update") {
+      const payload = await readJsonBody<ManagedAgentPlatformAgentExecutionBoundaryUpdatePayload>(request);
+      const result = options.controlPlaneService.updateExecutionBoundary(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/spawn-policy/update") {
+      const payload = await readJsonBody<ManagedAgentPlatformAgentSpawnPolicyUpdatePayload>(request);
+      return writeJson(response, 200, options.controlPlaneService.updateSpawnPolicy(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/pause") {
+      const payload = await readJsonBody<ManagedAgentPlatformAgentLifecyclePayload>(request);
+      const result = options.controlPlaneService.pauseAgent(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/resume") {
+      const payload = await readJsonBody<ManagedAgentPlatformAgentLifecyclePayload>(request);
+      const result = options.controlPlaneService.resumeAgent(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/archive") {
+      const payload = await readJsonBody<ManagedAgentPlatformAgentLifecyclePayload>(request);
+      const result = options.controlPlaneService.archiveAgent(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+    }
+
     if (method === "POST" && url.pathname === "/api/platform/agents/waiting/list") {
       const payload = await readJsonBody<ManagedAgentPlatformWaitingQueueListPayload>(request);
       return writeJson(response, 200, options.governanceService.listWaitingQueue(payload));
@@ -231,6 +304,24 @@ async function handlePlatformRequest(
     if (method === "POST" && url.pathname === "/api/platform/work-items/list") {
       const payload = await readJsonBody<ManagedAgentPlatformWorkItemListPayload>(request);
       return writeJson(response, 200, options.workflowService.listWorkItems(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/projects/workspace-binding/list") {
+      const payload = await readJsonBody<ManagedAgentPlatformProjectWorkspaceBindingListPayload>(request);
+      return writeJson(response, 200, options.controlPlaneService.listProjectWorkspaceBindings(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/projects/workspace-binding/detail") {
+      const payload = await readJsonBody<ManagedAgentPlatformProjectWorkspaceBindingDetailPayload>(request);
+      const result = options.controlPlaneService.getProjectWorkspaceBinding(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Project ${payload.projectId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/projects/workspace-binding/upsert") {
+      const payload = await readJsonBody<ManagedAgentPlatformProjectWorkspaceBindingUpsertPayload>(request);
+      return writeJson(response, 200, options.controlPlaneService.upsertProjectWorkspaceBinding(payload));
     }
 
     if (method === "POST" && url.pathname === "/api/platform/work-items/detail") {

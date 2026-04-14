@@ -145,6 +145,28 @@ export function initializePlatformSurface(options = {}) {
     mailboxResponseDecision: documentRef.getElementById("platform-mailbox-response-decision"),
     mailboxResponseInput: documentRef.getElementById("platform-mailbox-response-input"),
     mailboxResponseSubmit: documentRef.getElementById("platform-mailbox-response-submit"),
+    agentsStatus: documentRef.getElementById("platform-agents-status"),
+    agentsTotal: documentRef.getElementById("platform-agents-total"),
+    projectsTotal: documentRef.getElementById("platform-projects-total"),
+    agentsEmpty: documentRef.getElementById("platform-agents-empty"),
+    projectsEmpty: documentRef.getElementById("platform-projects-empty"),
+    agentsList: documentRef.getElementById("platform-agents-list"),
+    agentDetail: documentRef.getElementById("platform-agent-detail"),
+    projectsList: documentRef.getElementById("platform-projects-list"),
+    agentsActionStatus: documentRef.getElementById("platform-agents-action-status"),
+    agentCreateForm: documentRef.getElementById("platform-agent-create-form"),
+    agentCreateRoleInput: documentRef.getElementById("platform-agent-create-role-input"),
+    agentCreateNameInput: documentRef.getElementById("platform-agent-create-name-input"),
+    agentCreateMissionInput: documentRef.getElementById("platform-agent-create-mission-input"),
+    agentCreateSubmit: documentRef.getElementById("platform-agent-create-submit"),
+    projectBindingForm: documentRef.getElementById("platform-project-binding-form"),
+    projectBindingProjectInput: documentRef.getElementById("platform-project-binding-project-input"),
+    projectBindingOrganizationInput: documentRef.getElementById("platform-project-binding-organization-input"),
+    projectBindingDisplayInput: documentRef.getElementById("platform-project-binding-display-input"),
+    projectBindingWorkspaceInput: documentRef.getElementById("platform-project-binding-workspace-input"),
+    projectBindingNodeInput: documentRef.getElementById("platform-project-binding-node-input"),
+    projectBindingModeSelect: documentRef.getElementById("platform-project-binding-mode-select"),
+    projectBindingSubmit: documentRef.getElementById("platform-project-binding-submit"),
     runsStatus: documentRef.getElementById("platform-runs-status"),
     runsTotal: documentRef.getElementById("platform-runs-total"),
     runsEmpty: documentRef.getElementById("platform-runs-empty"),
@@ -184,6 +206,13 @@ export function initializePlatformSurface(options = {}) {
     selectedMailboxEntryId: "",
     mailboxActionMessage: "",
     mailboxActionPending: "",
+    organizations: [],
+    agents: [],
+    selectedAgentId: "",
+    selectedAgentDetail: null,
+    projectBindings: [],
+    agentsActionMessage: "",
+    agentsActionPending: "",
     runs: [],
     selectedRunId: "",
     selectedRunDetail: null,
@@ -209,6 +238,10 @@ export function initializePlatformSurface(options = {}) {
     dom.workItemResponseDecision.value = "approve";
   }
 
+  if (dom.projectBindingModeSelect && !dom.projectBindingModeSelect.value) {
+    dom.projectBindingModeSelect.value = "sticky";
+  }
+
   const render = () => {
     const nodeSummary = summarizeNodes(state.nodes);
     const governanceSummary = normalizeGovernanceSummary(state.governanceOverview?.summary);
@@ -223,6 +256,10 @@ export function initializePlatformSurface(options = {}) {
       : [];
     const workItemSummary = summarizeWorkItems(state.workItems);
     const mailboxSummary = summarizeMailboxItems(state.mailboxItems);
+    const agentSummary = {
+      total: state.agents.length,
+      projects: state.projectBindings.length,
+    };
     const selectedMailboxItem = state.mailboxItems.find(
       (item) => item?.entry?.mailboxEntryId === state.selectedMailboxEntryId,
     ) ?? null;
@@ -232,6 +269,8 @@ export function initializePlatformSurface(options = {}) {
     const hasHandoffs = handoffItems.length > 0;
     const hasWorkItems = state.workItems.length > 0;
     const hasMailboxItems = state.mailboxItems.length > 0;
+    const hasAgents = state.agents.length > 0;
+    const hasProjects = state.projectBindings.length > 0;
     const hasRuns = state.runs.length > 0;
     const nodesStatusMessage = state.loadErrorMessage
       ? state.loadErrorMessage
@@ -305,6 +344,21 @@ export function initializePlatformSurface(options = {}) {
         : selectedMailboxItem?.entry?.mailboxEntryId
           ? `当前选中消息：${selectedMailboxItem.entry.mailboxEntryId}`
           : "选择一条消息后，可执行 pull / ack / respond。";
+    const selectedAgentLabel = state.selectedAgentDetail?.agent?.displayName || state.selectedAgentId;
+    const agentsStatusMessage = state.loadErrorMessage
+      ? state.loadErrorMessage
+      : state.loading
+        ? "正在读取当前平台 agents 与 projects。"
+        : state.ownerPrincipalId
+          ? `当前共有 ${agentSummary.total} 个 agents、${agentSummary.projects} 条项目绑定。`
+          : "先填写 ownerPrincipalId，再查看当前平台 agents 与 projects。";
+    const agentsActionStatusMessage = state.agentsActionPending
+      ? `正在处理 agents/projects 动作：${state.agentsActionPending}`
+      : state.agentsActionMessage
+        ? state.agentsActionMessage
+        : selectedAgentLabel
+          ? `当前选中 agent：${selectedAgentLabel}`
+          : "可直接在这里创建 agent，并维护项目工作区绑定。";
 
     if (dom.sessionTitle) {
       dom.sessionTitle.textContent = state.tokenLabel ? `已登录：${state.tokenLabel}` : "未启用平台 Web 鉴权";
@@ -390,6 +444,20 @@ export function initializePlatformSurface(options = {}) {
       dom.mailboxResponseSubmit.textContent = state.mailboxActionPending === "respond"
         ? "回复中..."
         : "回复 mailbox";
+    }
+
+    if (dom.agentCreateSubmit) {
+      dom.agentCreateSubmit.disabled = state.loading || Boolean(state.agentsActionPending);
+      dom.agentCreateSubmit.textContent = state.agentsActionPending === "create-agent"
+        ? "创建中..."
+        : "创建 agent";
+    }
+
+    if (dom.projectBindingSubmit) {
+      dom.projectBindingSubmit.disabled = state.loading || Boolean(state.agentsActionPending);
+      dom.projectBindingSubmit.textContent = state.agentsActionPending === "upsert-project"
+        ? "保存中..."
+        : "保存项目绑定";
     }
 
     if (dom.nodesStatus) {
@@ -618,6 +686,60 @@ export function initializePlatformSurface(options = {}) {
       dom.mailboxActionStatus.textContent = mailboxActionStatusMessage;
     }
 
+    if (dom.agentsStatus) {
+      dom.agentsStatus.textContent = agentsStatusMessage;
+    }
+
+    if (dom.agentsTotal) {
+      dom.agentsTotal.textContent = String(agentSummary.total);
+    }
+
+    if (dom.projectsTotal) {
+      dom.projectsTotal.textContent = String(agentSummary.projects);
+    }
+
+    if (dom.agentsEmpty) {
+      dom.agentsEmpty.hidden = hasAgents;
+      dom.agentsEmpty.textContent = state.loadErrorMessage
+        ? "agents 读取失败，请先排查平台控制面。"
+        : state.ownerPrincipalId
+          ? "当前 ownerPrincipalId 下还没有 agents。"
+          : "先填写 ownerPrincipalId，再读取当前平台 agents。";
+    }
+
+    if (dom.projectsEmpty) {
+      dom.projectsEmpty.hidden = hasProjects;
+      dom.projectsEmpty.textContent = state.loadErrorMessage
+        ? "projects 读取失败，请先排查平台控制面。"
+        : state.ownerPrincipalId
+          ? "当前 ownerPrincipalId 下还没有项目工作区绑定。"
+          : "先填写 ownerPrincipalId，再读取当前平台项目工作区绑定。";
+    }
+
+    if (dom.agentsList) {
+      dom.agentsList.innerHTML = hasAgents
+        ? state.agents.map((agent) => renderAgentCard(agent, state.selectedAgentId)).join("")
+        : "";
+    }
+
+    if (dom.agentDetail) {
+      dom.agentDetail.innerHTML = state.selectedAgentDetail
+        ? renderAgentDetail(state.selectedAgentDetail)
+        : hasAgents
+          ? '<p class="platform-inline-note">点击任意 agent 卡片，查看当前 detail。</p>'
+          : "";
+    }
+
+    if (dom.projectsList) {
+      dom.projectsList.innerHTML = hasProjects
+        ? state.projectBindings.map((binding) => renderProjectBindingCard(binding)).join("")
+        : "";
+    }
+
+    if (dom.agentsActionStatus) {
+      dom.agentsActionStatus.textContent = agentsActionStatusMessage;
+    }
+
     if (dom.runsStatus) {
       dom.runsStatus.textContent = runsStatusMessage;
     }
@@ -695,6 +817,11 @@ export function initializePlatformSurface(options = {}) {
       state.mailboxAgent = null;
       state.mailboxItems = [];
       state.selectedMailboxEntryId = "";
+      state.organizations = [];
+      state.agents = [];
+      state.selectedAgentId = "";
+      state.selectedAgentDetail = null;
+      state.projectBindings = [];
       state.runs = [];
       state.selectedRunId = "";
       state.selectedRunDetail = null;
@@ -715,6 +842,8 @@ export function initializePlatformSurface(options = {}) {
         collaborationPayload,
         runsPayload,
         workItemsPayload,
+        agentsPayload,
+        projectBindingsPayload,
       ] = await Promise.all([
         requestPlatformJson(fetchFn, "/api/platform/nodes/list", {
           ownerPrincipalId: state.ownerPrincipalId,
@@ -734,6 +863,12 @@ export function initializePlatformSurface(options = {}) {
         requestPlatformJson(fetchFn, "/api/platform/work-items/list", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取 work-items 失败。"),
+        requestPlatformJson(fetchFn, "/api/platform/agents/list", {
+          ownerPrincipalId: state.ownerPrincipalId,
+        }, "读取 agents 失败。"),
+        requestPlatformJson(fetchFn, "/api/platform/projects/workspace-binding/list", {
+          ownerPrincipalId: state.ownerPrincipalId,
+        }, "读取项目工作区绑定失败。"),
       ]);
 
       state.nodes = Array.isArray(nodesPayload?.nodes) ? nodesPayload.nodes : [];
@@ -748,6 +883,9 @@ export function initializePlatformSurface(options = {}) {
       };
       state.runs = Array.isArray(runsPayload?.runs) ? runsPayload.runs : [];
       state.workItems = Array.isArray(workItemsPayload?.workItems) ? workItemsPayload.workItems : [];
+      state.organizations = Array.isArray(agentsPayload?.organizations) ? agentsPayload.organizations : [];
+      state.agents = Array.isArray(agentsPayload?.agents) ? agentsPayload.agents : [];
+      state.projectBindings = Array.isArray(projectBindingsPayload?.bindings) ? projectBindingsPayload.bindings : [];
 
       const availableHandoffAgentIds = state.collaborationDashboard.parents
         .map((parent) => normalizeOwnerPrincipalId(parent?.items?.[0]?.targetAgentId))
@@ -775,6 +913,19 @@ export function initializePlatformSurface(options = {}) {
           ownerPrincipalId: state.ownerPrincipalId,
           workItemId: state.selectedWorkItemId,
         }, "读取 work-item detail 失败。")
+        : null;
+
+      if (!state.agents.some((agent) => agent?.agentId === state.selectedAgentId)) {
+        state.selectedAgentId = typeof state.agents[0]?.agentId === "string"
+          ? state.agents[0].agentId
+          : "";
+      }
+
+      state.selectedAgentDetail = state.selectedAgentId
+        ? await requestPlatformJson(fetchFn, "/api/platform/agents/detail", {
+          ownerPrincipalId: state.ownerPrincipalId,
+          agentId: state.selectedAgentId,
+        }, "读取 agent detail 失败。")
         : null;
 
       const nextMailboxAgentId = resolvePreferredMailboxAgentId(
@@ -833,6 +984,11 @@ export function initializePlatformSurface(options = {}) {
       state.mailboxAgent = null;
       state.mailboxItems = [];
       state.selectedMailboxEntryId = "";
+      state.organizations = [];
+      state.agents = [];
+      state.selectedAgentId = "";
+      state.selectedAgentDetail = null;
+      state.projectBindings = [];
       state.runs = [];
       state.selectedRunId = "";
       state.selectedRunDetail = null;
@@ -962,6 +1118,150 @@ export function initializePlatformSurface(options = {}) {
       state.mailboxActionMessage = error instanceof Error ? error.message : "读取 mailbox 失败。";
     } finally {
       state.mailboxActionPending = "";
+      render();
+    }
+  };
+
+  const loadAgentDetail = async (agentId) => {
+    const normalizedAgentId = normalizeOwnerPrincipalId(agentId);
+
+    if (!normalizedAgentId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.selectedAgentId = normalizedAgentId;
+    render();
+
+    try {
+      state.selectedAgentDetail = await requestPlatformJson(fetchFn, "/api/platform/agents/detail", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        agentId: normalizedAgentId,
+      }, "读取 agent detail 失败。");
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.selectedAgentDetail = null;
+      state.loadErrorMessage = error instanceof Error ? error.message : "读取 agent detail 失败。";
+    } finally {
+      render();
+    }
+  };
+
+  const createAgent = async (agent) => {
+    if (!state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    const departmentRole = typeof agent?.departmentRole === "string" ? agent.departmentRole.trim() : "";
+
+    if (!departmentRole) {
+      state.agentsActionMessage = "创建 agent 需要 departmentRole。";
+      render();
+      return;
+    }
+
+    state.agentsActionPending = "create-agent";
+    render();
+
+    try {
+      const payload = await requestPlatformJson(fetchFn, "/api/platform/agents/create", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        agent: {
+          departmentRole,
+          displayName: normalizeOptionalText(agent?.displayName),
+          mission: normalizeOptionalText(agent?.mission),
+        },
+      }, "创建 agent 失败。");
+      const organization = payload?.organization;
+      const principal = payload?.principal;
+      const createdAgent = payload?.agent;
+
+      if (organization?.organizationId) {
+        state.organizations = upsertById(state.organizations, organization, "organizationId");
+      }
+
+      if (createdAgent?.agentId) {
+        state.agents = upsertById(state.agents, createdAgent, "agentId");
+        state.selectedAgentId = createdAgent.agentId;
+        state.selectedAgentDetail = {
+          organization: organization ?? { organizationId: "", displayName: "", slug: "", ownerPrincipalId: state.ownerPrincipalId },
+          principal: principal ?? { principalId: "", organizationId: organization?.organizationId ?? "", displayName: "" },
+          agent: createdAgent,
+          workspacePolicy: {
+            agentId: createdAgent.agentId,
+            canonicalWorkspacePath: null,
+            additionalWorkspacePaths: [],
+          },
+          runtimeProfile: {
+            agentId: createdAgent.agentId,
+            provider: null,
+            model: null,
+          },
+          authAccounts: [],
+          thirdPartyProviders: [],
+        };
+      }
+
+      state.agentsActionMessage = createdAgent?.agentId
+        ? `已创建 ${createdAgent.agentId}。`
+        : "已创建 agent。";
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.agentsActionMessage = error instanceof Error ? error.message : "创建 agent 失败。";
+    } finally {
+      state.agentsActionPending = "";
+      render();
+    }
+  };
+
+  const upsertProjectBinding = async (binding) => {
+    if (!state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    const projectId = typeof binding?.projectId === "string" ? binding.projectId.trim() : "";
+    const organizationId = typeof binding?.organizationId === "string" ? binding.organizationId.trim() : "";
+
+    if (!projectId || !organizationId) {
+      state.agentsActionMessage = "保存项目绑定需要 projectId 和 organizationId。";
+      render();
+      return;
+    }
+
+    state.agentsActionPending = "upsert-project";
+    render();
+
+    try {
+      const preferredNodeId = normalizeOptionalText(binding?.preferredNodeId);
+      const bindingPayload = {
+        projectId,
+        organizationId,
+        displayName: normalizeOptionalText(binding?.displayName),
+        canonicalWorkspacePath: normalizeOptionalText(binding?.canonicalWorkspacePath),
+        continuityMode: binding?.continuityMode === "replicated" ? "replicated" : "sticky",
+      };
+
+      if (preferredNodeId) {
+        bindingPayload.preferredNodeId = preferredNodeId;
+      }
+
+      const payload = await requestPlatformJson(fetchFn, "/api/platform/projects/workspace-binding/upsert", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        binding: bindingPayload,
+      }, "保存项目绑定失败。");
+      const nextBinding = payload?.binding;
+
+      if (nextBinding?.projectId) {
+        state.projectBindings = upsertById(state.projectBindings, nextBinding, "projectId");
+      }
+
+      state.agentsActionMessage = nextBinding?.projectId
+        ? `已保存 ${nextBinding.projectId}。`
+        : "已保存项目绑定。";
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.agentsActionMessage = error instanceof Error ? error.message : "保存项目绑定失败。";
+    } finally {
+      state.agentsActionPending = "";
       render();
     }
   };
@@ -1386,6 +1686,43 @@ export function initializePlatformSurface(options = {}) {
     });
   });
 
+  dom.agentCreateForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void createAgent({
+      departmentRole: dom.agentCreateRoleInput?.value ?? "",
+      displayName: dom.agentCreateNameInput?.value ?? "",
+      mission: dom.agentCreateMissionInput?.value ?? "",
+    });
+  });
+
+  dom.agentsList?.addEventListener("click", (event) => {
+    const agentCard = event.target instanceof HTMLElement
+      ? event.target.closest("[data-platform-agent-id]")
+      : null;
+
+    if (!agentCard) {
+      return;
+    }
+
+    const agentId = agentCard.getAttribute("data-platform-agent-id");
+
+    if (agentId) {
+      void loadAgentDetail(agentId);
+    }
+  });
+
+  dom.projectBindingForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void upsertProjectBinding({
+      projectId: dom.projectBindingProjectInput?.value ?? "",
+      organizationId: dom.projectBindingOrganizationInput?.value ?? "",
+      displayName: dom.projectBindingDisplayInput?.value ?? "",
+      canonicalWorkspacePath: dom.projectBindingWorkspaceInput?.value ?? "",
+      preferredNodeId: dom.projectBindingNodeInput?.value ?? "",
+      continuityMode: dom.projectBindingModeSelect?.value ?? "sticky",
+    });
+  });
+
   dom.runsList?.addEventListener("click", (event) => {
     const runCard = event.target instanceof HTMLElement
       ? event.target.closest("[data-platform-run-id]")
@@ -1414,6 +1751,9 @@ export function initializePlatformSurface(options = {}) {
     loadNodes: loadPlatformData,
     loadPlatformData,
     loadAgentHandoffs,
+    loadAgentDetail,
+    createAgent,
+    upsertProjectBinding,
     loadWorkItemDetail,
     loadMailbox,
     loadRunDetail,
@@ -1622,6 +1962,75 @@ function renderMailboxDetail(item, agent) {
     <p class="platform-inline-note">关联 work-item：${escapeHtml(message?.workItemId || entry?.workItemId || "暂无")}</p>
     <p class="platform-inline-note">最近更新时间：${escapeHtml(formatTimestamp(entry?.updatedAt || message?.updatedAt))}</p>
   </div>`;
+}
+
+function renderAgentCard(agent, selectedAgentId) {
+  const chips = [
+    agent?.agentId ? agent.agentId : "",
+    agent?.departmentRole ? `角色 ${agent.departmentRole}` : "",
+    agent?.status ? `状态 ${agent.status}` : "",
+    agent?.organizationId ? `组织 ${agent.organizationId}` : "",
+  ].filter(Boolean);
+  const selected = typeof agent?.agentId === "string" && agent.agentId === selectedAgentId;
+
+  return `<article
+    class="platform-agent-card"
+    data-platform-agent-id="${escapeHtml(agent?.agentId || "")}"
+    data-selected="${selected ? "true" : "false"}"
+  >
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(agent?.displayName || agent?.agentId || "未命名 agent")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">${escapeHtml(agent?.mission || "当前未配置 mission。")}</p>
+  </article>`;
+}
+
+function renderAgentDetail(detail) {
+  const chips = [
+    detail?.agent?.agentId ? detail.agent.agentId : "",
+    detail?.agent?.departmentRole ? `角色 ${detail.agent.departmentRole}` : "",
+    detail?.agent?.status ? `状态 ${detail.agent.status}` : "",
+    detail?.organization?.organizationId ? `组织 ${detail.organization.organizationId}` : "",
+  ].filter(Boolean);
+
+  return `<div>
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(detail?.agent?.displayName || detail?.agent?.agentId || "未命名 agent")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">workspace：${escapeHtml(detail?.workspacePolicy?.canonicalWorkspacePath || "未配置")}</p>
+    <p class="platform-inline-note">provider/model：${escapeHtml(detail?.runtimeProfile?.provider || "未配置")} / ${escapeHtml(detail?.runtimeProfile?.model || "未配置")}</p>
+  </div>`;
+}
+
+function renderProjectBindingCard(binding) {
+  const chips = [
+    binding?.projectId ? binding.projectId : "",
+    binding?.organizationId ? `组织 ${binding.organizationId}` : "",
+    binding?.continuityMode ? `连续性 ${binding.continuityMode}` : "",
+    binding?.preferredNodeId ? `首选节点 ${binding.preferredNodeId}` : "",
+  ].filter(Boolean);
+
+  return `<article class="platform-project-card">
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(binding?.displayName || binding?.projectId || "未命名项目")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">workspace：${escapeHtml(binding?.canonicalWorkspacePath || "未配置")}</p>
+  </article>`;
 }
 
 function renderCollaborationParentCard(parent, selectedHandoffAgentId) {
@@ -1922,6 +2331,17 @@ function upsertMailboxItem(state, mailboxItem) {
     : [nextItem, ...state.mailboxItems];
 }
 
+function upsertById(items, nextItem, key) {
+  if (!nextItem?.[key]) {
+    return Array.isArray(items) ? items : [];
+  }
+
+  const list = Array.isArray(items) ? items : [];
+  return list.some((item) => item?.[key] === nextItem[key])
+    ? list.map((item) => item?.[key] === nextItem[key] ? { ...item, ...nextItem } : item)
+    : [nextItem, ...list];
+}
+
 function resolveNodeStatusLabel(status) {
   switch (status) {
     case "online":
@@ -2055,6 +2475,11 @@ function normalizeNodeStatus(value) {
 
 function normalizeNumber(value, fallback) {
   return Number.isFinite(value) ? Number(value) : fallback;
+}
+
+function normalizeOptionalText(value) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || null;
 }
 
 function formatTimestamp(value) {

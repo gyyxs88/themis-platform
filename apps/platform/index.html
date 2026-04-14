@@ -400,6 +400,165 @@
         <section class="platform-panel">
           <div class="platform-panel-head">
             <div>
+              <p class="platform-panel-kicker">Control Plane</p>
+              <h2>Agents & Projects</h2>
+            </div>
+            <p class="platform-panel-copy">
+              当前开始由独立 `themis-platform` 页面承接 `agents + projects` 的最小真实控制面，先覆盖 agent
+              创建/详情与项目工作区绑定读写。
+            </p>
+          </div>
+
+          <div class="platform-summary-grid platform-summary-grid--compact-two">
+            <article class="platform-summary-card">
+              <span>Agents</span>
+              <strong id="platform-agents-total">0</strong>
+            </article>
+            <article class="platform-summary-card">
+              <span>Projects</span>
+              <strong id="platform-projects-total">0</strong>
+            </article>
+          </div>
+
+          <p id="platform-agents-status" class="platform-inline-note">
+            还没有读取 agents 与 projects。
+          </p>
+          <p id="platform-agents-action-status" class="platform-inline-note">
+            可在这里创建 agent，并维护项目工作区绑定。
+          </p>
+
+          <article class="platform-form-card">
+            <div class="platform-form-head">
+              <div>
+                <p class="platform-panel-kicker">Create Agent</p>
+                <h3>新建平台 agent</h3>
+              </div>
+            </div>
+
+            <form id="platform-agent-create-form" class="platform-action-grid">
+              <label class="platform-field">
+                <span>departmentRole</span>
+                <input
+                  id="platform-agent-create-role-input"
+                  type="text"
+                  placeholder="例如：Platform"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <label class="platform-field">
+                <span>displayName</span>
+                <input
+                  id="platform-agent-create-name-input"
+                  type="text"
+                  placeholder="例如：平台值班员"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <label class="platform-field platform-field--span-full">
+                <span>mission</span>
+                <textarea
+                  id="platform-agent-create-mission-input"
+                  rows="3"
+                  placeholder="例如：负责平台控制面最小治理。"
+                ></textarea>
+              </label>
+              <button id="platform-agent-create-submit" type="submit" class="platform-button">创建 agent</button>
+            </form>
+          </article>
+
+          <div class="platform-split-grid">
+            <div>
+              <p id="platform-agents-empty" class="platform-empty-state">
+                先填写 ownerPrincipalId，再读取当前平台 agents。
+              </p>
+              <div id="platform-agents-list" class="platform-agents-list"></div>
+            </div>
+            <div id="platform-agent-detail" class="platform-card-detail"></div>
+          </div>
+
+          <article class="platform-form-card platform-form-card--secondary">
+            <div class="platform-form-head">
+              <div>
+                <p class="platform-panel-kicker">Project Binding</p>
+                <h3>项目工作区绑定</h3>
+              </div>
+            </div>
+
+            <form id="platform-project-binding-form" class="platform-action-grid">
+              <label class="platform-field">
+                <span>projectId</span>
+                <input
+                  id="platform-project-binding-project-input"
+                  type="text"
+                  placeholder="例如：project-site-foo"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <label class="platform-field">
+                <span>organizationId</span>
+                <input
+                  id="platform-project-binding-organization-input"
+                  type="text"
+                  placeholder="例如：org-platform"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <label class="platform-field">
+                <span>displayName</span>
+                <input
+                  id="platform-project-binding-display-input"
+                  type="text"
+                  placeholder="例如：官网 site-foo"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <label class="platform-field">
+                <span>workspacePath</span>
+                <input
+                  id="platform-project-binding-workspace-input"
+                  type="text"
+                  placeholder="例如：/srv/platform-alpha"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <label class="platform-field">
+                <span>preferredNodeId</span>
+                <input
+                  id="platform-project-binding-node-input"
+                  type="text"
+                  placeholder="例如：node-alpha"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <label class="platform-field">
+                <span>continuityMode</span>
+                <select id="platform-project-binding-mode-select">
+                  <option value="sticky">sticky</option>
+                  <option value="replicated">replicated</option>
+                </select>
+              </label>
+              <button id="platform-project-binding-submit" type="submit" class="platform-button">
+                保存项目绑定
+              </button>
+            </form>
+          </article>
+
+          <p id="platform-projects-empty" class="platform-empty-state">
+            当前还没有项目工作区绑定。
+          </p>
+          <div id="platform-projects-list" class="platform-projects-list"></div>
+        </section>
+
+        <section class="platform-panel">
+          <div class="platform-panel-head">
+            <div>
               <p class="platform-panel-kicker">Collaboration</p>
               <h2>Parent Tasks & Handoffs</h2>
             </div>

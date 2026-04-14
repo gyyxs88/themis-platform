@@ -255,6 +255,8 @@ textarea {
 .platform-waiting-list,
 .platform-work-items-list,
 .platform-mailbox-list,
+.platform-agents-list,
+.platform-projects-list,
 .platform-collaboration-list,
 .platform-handoffs-list,
 .platform-runs-list {
@@ -283,6 +285,8 @@ textarea {
 .platform-run-detail,
 .platform-work-item-card,
 .platform-mailbox-card,
+.platform-agent-card,
+.platform-project-card,
 .platform-card-detail,
 .platform-form-card {
   padding: 18px 20px;
@@ -381,6 +385,9 @@ textarea {
 .platform-mailbox-card:hover,
 .platform-mailbox-card:focus-visible,
 .platform-mailbox-card[data-selected="true"],
+.platform-agent-card:hover,
+.platform-agent-card:focus-visible,
+.platform-agent-card[data-selected="true"],
 .platform-work-item-card:hover,
 .platform-work-item-card:focus-visible,
 .platform-work-item-card[data-selected="true"],
