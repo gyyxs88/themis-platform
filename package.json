@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "test": "node --test --import tsx src/**/*.test.ts",
+    "test": "node --test --import tsx src/**/*.test.ts apps/**/*.test.js",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "dev:platform": "tsx watch --clear-screen=false src/server/platform-main.ts",
