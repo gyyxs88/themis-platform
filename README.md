@@ -32,6 +32,7 @@
 ## 部署前提
 
 - 当前仓仍通过 `file:../themis-contracts` 依赖共享契约；真实部署时需要把 `themis-contracts` 作为 sibling repo 放到同一级目录，再执行 `npm ci`。
+- `src/server/platform-main.ts` 现在会先读取仓库根目录 `.env/.env.local`，并按 `THEMIS_HOST` / `THEMIS_PORT` 启动；默认监听已改成 `0.0.0.0:3100`，不再固定写死 `127.0.0.1:3200`。
 - 平台常驻建议直接使用根目录 `./themis-platform` 或 `npm run start:platform`，不要再借主仓 `./themis` 的兼容入口。
 - 平台机本地运行态会写入 `infra/local/` 与 `infra/platform/`，这两个目录已经加入 `.gitignore`，不应纳入版本控制。
 
@@ -51,5 +52,6 @@
 - `auth platform` 首版当前使用本地 `infra/local/platform-service-tokens.json` 保存平台服务令牌元数据，后续再和平台持久化控制面打通。
 - `doctor worker-fleet` 与 `worker-fleet` 已迁入独立平台仓，但当前仍只覆盖最小节点值班与治理闭环。
 - 当前治理页已覆盖最小 `agents + projects + governance-overview + waiting/list + collaboration-dashboard + handoffs/list + oncall/summary + work-items + mailbox + recent runs`。
+- 当前 `platform-main` 已具备真实部署入口的基础启动语义，但平台事实仍是 in-memory；后续还需继续迁入 Web Access/Bearer、MySQL shared control plane 与 scheduler/runtime 主链，才能替换现网平台服务。
 
 下一步应优先把本地 token 存储与平台服务端鉴权事实继续收口到同一控制面，再逐步把当前 in-memory 平台事实换成真实持久化控制面。
