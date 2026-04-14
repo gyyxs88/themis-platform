@@ -3,13 +3,90 @@ import { once } from "node:events";
 import test from "node:test";
 import { createPlatformApp } from "./platform-app.js";
 import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
+import { createInMemoryPlatformWorkerRunService } from "./platform-worker-run-service.js";
 
 test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契约响应", async () => {
+  const nodeService = createInMemoryPlatformNodeService({
+    now: () => "2026-04-14T09:30:00.000Z",
+    generateNodeId: () => "node-alpha",
+    organizations: [{
+      organizationId: "org-platform",
+      ownerPrincipalId: "principal-platform-owner",
+      displayName: "Platform Team",
+      slug: "platform-team",
+      createdAt: "2026-04-14T09:00:00.000Z",
+      updatedAt: "2026-04-14T09:00:00.000Z",
+    }],
+  });
+  const workerRunService = createInMemoryPlatformWorkerRunService({
+    nodeService,
+    now: () => "2026-04-14T09:40:00.000Z",
+    assignedRuns: [{
+      organization: {
+        organizationId: "org-platform",
+        ownerPrincipalId: "principal-platform-owner",
+        displayName: "Platform Team",
+        slug: "platform-team",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+      node: {
+        nodeId: "node-alpha",
+        organizationId: "org-platform",
+        displayName: "Worker Alpha",
+        status: "online",
+        slotCapacity: 2,
+        slotAvailable: 1,
+        createdAt: "2026-04-14T09:30:00.000Z",
+        updatedAt: "2026-04-14T09:30:00.000Z",
+      },
+      targetAgent: {
+        agentId: "agent-alpha",
+        organizationId: "org-platform",
+        displayName: "Agent Alpha",
+        departmentRole: "Platform",
+        status: "active",
+        createdAt: "2026-04-14T09:00:00.000Z",
+        updatedAt: "2026-04-14T09:00:00.000Z",
+      },
+      workItem: {
+        workItemId: "work-item-alpha",
+        organizationId: "org-platform",
+        targetAgentId: "agent-alpha",
+        sourceType: "human",
+        goal: "Verify platform worker run routes.",
+        status: "queued",
+        priority: "normal",
+        createdAt: "2026-04-14T09:35:00.000Z",
+        updatedAt: "2026-04-14T09:35:00.000Z",
+      },
+      run: {
+        runId: "run-alpha",
+        organizationId: "org-platform",
+        workItemId: "work-item-alpha",
+        nodeId: "node-alpha",
+        status: "created",
+        createdAt: "2026-04-14T09:35:00.000Z",
+        updatedAt: "2026-04-14T09:35:00.000Z",
+      },
+      executionLease: {
+        leaseId: "lease-alpha",
+        runId: "run-alpha",
+        nodeId: "node-alpha",
+        workItemId: "work-item-alpha",
+        leaseToken: "lease-token-alpha",
+        status: "active",
+        createdAt: "2026-04-14T09:35:00.000Z",
+        updatedAt: "2026-04-14T09:35:00.000Z",
+      },
+      executionContract: {
+        workspacePath: "/srv/platform-alpha",
+      },
+    }],
+  });
   const server = createPlatformApp({
-    nodeService: createInMemoryPlatformNodeService({
-      now: () => "2026-04-14T09:30:00.000Z",
-      generateNodeId: () => "node-alpha",
-    }),
+    nodeService,
+    workerRunService,
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -194,6 +271,97 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
       requeuedWorkItemCount: 0,
     });
     assert.deepEqual(reclaimPayload.reclaimedLeases, []);
+
+    const pull = await fetch(`${baseUrl}/api/platform/worker/runs/pull`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-alpha",
+      }),
+    });
+    assert.equal(pull.status, 200);
+    const pullPayload = await pull.json() as {
+      run?: { runId?: string; status?: string };
+      executionLease?: { leaseId?: string };
+      executionContract?: { workspacePath?: string };
+    };
+    assert.equal(pullPayload.run?.runId, "run-alpha");
+    assert.equal(pullPayload.run?.status, "created");
+    assert.equal(pullPayload.executionLease?.leaseId, "lease-alpha");
+    assert.equal(pullPayload.executionContract?.workspacePath, "/srv/platform-alpha");
+
+    const starting = await fetch(`${baseUrl}/api/platform/worker/runs/update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-alpha",
+        runId: "run-alpha",
+        leaseToken: "lease-token-alpha",
+        status: "starting",
+      }),
+    });
+    assert.equal(starting.status, 200);
+    const startingPayload = await starting.json() as {
+      run?: { status?: string };
+      workItem?: { status?: string };
+      executionLease?: { status?: string };
+    };
+    assert.equal(startingPayload.run?.status, "starting");
+    assert.equal(startingPayload.workItem?.status, "starting");
+    assert.equal(startingPayload.executionLease?.status, "active");
+
+    const update = await fetch(`${baseUrl}/api/platform/worker/runs/update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-alpha",
+        runId: "run-alpha",
+        leaseToken: "lease-token-alpha",
+        status: "running",
+      }),
+    });
+    assert.equal(update.status, 200);
+    const updatePayload = await update.json() as {
+      run?: { status?: string };
+      workItem?: { status?: string };
+      executionLease?: { status?: string };
+    };
+    assert.equal(updatePayload.run?.status, "running");
+    assert.equal(updatePayload.workItem?.status, "running");
+    assert.equal(updatePayload.executionLease?.status, "active");
+
+    const complete = await fetch(`${baseUrl}/api/platform/worker/runs/complete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-alpha",
+        runId: "run-alpha",
+        leaseToken: "lease-token-alpha",
+      }),
+    });
+    assert.equal(complete.status, 200);
+    const completePayload = await complete.json() as {
+      targetAgent?: { agentId?: string };
+      run?: { status?: string };
+      workItem?: { status?: string };
+      executionLease?: { status?: string };
+    };
+    assert.equal(completePayload.targetAgent?.agentId, "agent-alpha");
+    assert.equal(completePayload.run?.status, "completed");
+    assert.equal(completePayload.workItem?.status, "completed");
+    assert.equal(completePayload.executionLease?.status, "released");
 
     const blocked = await fetch(`${baseUrl}/api/runtime/config`);
     assert.equal(blocked.status, 404);

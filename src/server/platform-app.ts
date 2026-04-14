@@ -6,25 +6,34 @@ import type {
   ManagedAgentPlatformNodeListPayload,
   ManagedAgentPlatformNodeReclaimPayload,
   ManagedAgentPlatformNodeRegisterPayload,
+  ManagedAgentPlatformWorkerPullPayload,
+  ManagedAgentPlatformWorkerRunCompletePayload,
+  ManagedAgentPlatformWorkerRunStatusPayload,
 } from "themis-contracts/managed-agent-platform-worker";
 import { readPlatformAsset } from "./platform-assets.js";
 import { createInMemoryPlatformNodeService, type PlatformNodeService } from "./platform-node-service.js";
+import { createInMemoryPlatformWorkerRunService, type PlatformWorkerRunService } from "./platform-worker-run-service.js";
 
 export interface PlatformAppOptions {
   serviceName?: string;
   nodeService?: PlatformNodeService;
+  workerRunService?: PlatformWorkerRunService;
   webAuthTokenLabel?: string;
 }
 
 export function createPlatformApp(options: PlatformAppOptions = {}): Server {
   const serviceName = options.serviceName ?? "themis-platform";
   const nodeService = options.nodeService ?? createInMemoryPlatformNodeService();
+  const workerRunService = options.workerRunService ?? createInMemoryPlatformWorkerRunService({
+    nodeService,
+  });
   const webAuthTokenLabel = options.webAuthTokenLabel ?? "";
 
   return createServer((request, response) => {
     void handlePlatformRequest(request, response, {
       serviceName,
       nodeService,
+      workerRunService,
       webAuthTokenLabel,
     });
   });
@@ -33,6 +42,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
 interface HandlePlatformRequestOptions {
   serviceName: string;
   nodeService: PlatformNodeService;
+  workerRunService: PlatformWorkerRunService;
   webAuthTokenLabel: string;
 }
 
@@ -115,6 +125,28 @@ async function handlePlatformRequest(
       return result
         ? writeJson(response, 200, result)
         : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/worker/runs/pull") {
+      const payload = await readJsonBody<ManagedAgentPlatformWorkerPullPayload>(request);
+      const result = options.workerRunService.pullAssignedRun(payload);
+      return writeJson(response, 200, result ?? {});
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/worker/runs/update") {
+      const payload = await readJsonBody<ManagedAgentPlatformWorkerRunStatusPayload>(request);
+      const result = options.workerRunService.updateRunStatus(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/worker/runs/complete") {
+      const payload = await readJsonBody<ManagedAgentPlatformWorkerRunCompletePayload>(request);
+      const result = options.workerRunService.completeRun(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
     }
 
     if (url.pathname.startsWith("/api/")) {
