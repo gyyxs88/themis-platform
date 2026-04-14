@@ -4,7 +4,11 @@
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
+  "bin": {
+    "themis-platform": "./themis-platform"
+  },
   "scripts": {
+    "themis:platform": "tsx src/cli/platform-main.ts",
     "test": "node --test --import tsx src/**/*.test.ts apps/**/*.test.js",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
