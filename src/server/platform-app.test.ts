@@ -393,6 +393,8 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     assert.match(stylesheetText, /\.platform-shell\s*\{[\s\S]*height:\s*100vh;/);
     assert.match(stylesheetText, /\.platform-workbench\s*\{[\s\S]*overflow:\s*hidden;/);
     assert.match(stylesheetText, /\.platform-workspace\s*\{[\s\S]*overflow-y:\s*auto;/);
+    assert.doesNotMatch(stylesheetText, /\.platform-workspace\s*\{[\s\S]*padding-right:\s*4px;/);
+    assert.doesNotMatch(stylesheetText, /::-webkit-scrollbar|scrollbar-width|scrollbar-color/);
 
     const health = await fetch(`${baseUrl}/api/health`);
     assert.equal(health.status, 200);

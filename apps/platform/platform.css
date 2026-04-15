@@ -129,7 +129,6 @@ textarea {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 4px;
   overscroll-behavior: contain;
 }
 
@@ -675,9 +674,6 @@ textarea {
     display: grid;
   }
 
-  .platform-workspace {
-    padding-right: 0;
-  }
 }
 
 @media (max-width: 640px) {
