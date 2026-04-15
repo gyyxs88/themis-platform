@@ -506,6 +506,101 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
         });
       }
 
+      if (url === "/api/platform/nodes/detail") {
+        return createJsonResponse(200, {
+          node: {
+            nodeId: "node-a",
+            displayName: "Worker Alpha",
+            organizationId: "org-platform",
+            status: "online",
+            nodeIp: "192.168.31.208",
+            slotCapacity: 2,
+            slotAvailable: 1,
+            heartbeatTtlSeconds: 60,
+            lastHeartbeatAt: "2026-04-14T11:59:40.000Z",
+            workspaceCapabilities: ["/srv/platform-alpha"],
+            credentialCapabilities: ["default"],
+            providerCapabilities: ["gateway-a"],
+            labels: ["linux", "build"],
+          },
+          leaseSummary: {
+            totalCount: 2,
+            activeCount: 1,
+            expiredCount: 0,
+            releasedCount: 1,
+            revokedCount: 0,
+          },
+          activeExecutionLeases: [{
+            lease: {
+              leaseId: "lease-node-a-active",
+              runId: "run-node-a-active",
+              nodeId: "node-a",
+              workItemId: "work-item-node-a-active",
+              status: "active",
+              updatedAt: "2026-04-14T11:59:50.000Z",
+            },
+            run: {
+              runId: "run-node-a-active",
+              status: "running",
+            },
+            workItem: {
+              workItemId: "work-item-node-a-active",
+              goal: "处理节点 A 的运行中任务",
+              status: "running",
+            },
+            targetAgent: {
+              agentId: "agent-node-a",
+              displayName: "Agent Node A",
+            },
+          }],
+          recentExecutionLeases: [{
+            lease: {
+              leaseId: "lease-node-a-active",
+              runId: "run-node-a-active",
+              nodeId: "node-a",
+              workItemId: "work-item-node-a-active",
+              status: "active",
+              updatedAt: "2026-04-14T11:59:50.000Z",
+            },
+            run: {
+              runId: "run-node-a-active",
+              status: "running",
+            },
+            workItem: {
+              workItemId: "work-item-node-a-active",
+              goal: "处理节点 A 的运行中任务",
+              status: "running",
+            },
+            targetAgent: {
+              agentId: "agent-node-a",
+              displayName: "Agent Node A",
+            },
+          }, {
+            lease: {
+              leaseId: "lease-node-a-released",
+              runId: "run-node-a-released",
+              nodeId: "node-a",
+              workItemId: "work-item-node-a-released",
+              status: "released",
+              updatedAt: "2026-04-14T11:40:00.000Z",
+            },
+            run: {
+              runId: "run-node-a-released",
+              status: "completed",
+            },
+            workItem: {
+              workItemId: "work-item-node-a-released",
+              goal: "节点 A 已完成任务",
+              status: "completed",
+            },
+            targetAgent: {
+              agentId: "agent-node-a",
+              displayName: "Agent Node A",
+            },
+          }],
+        });
+      }
+
       if (url === "/api/platform/oncall/summary") {
         return createJsonResponse(200, {
           counts: {
@@ -809,6 +904,9 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
   assert.equal(document.getElementById("platform-session-title").textContent, "已登录：platform-web");
   assert.equal(document.getElementById("platform-summary-total").textContent, "2");
   assert.match(document.getElementById("platform-nodes-list").innerHTML, /IP 192\.168\.31\.208/);
+  assert.match(document.getElementById("platform-node-detail").innerHTML, /Worker Alpha/);
+  assert.match(document.getElementById("platform-node-detail").innerHTML, /处理节点 A 的运行中任务/);
+  assert.match(document.getElementById("platform-node-detail").innerHTML, /\/srv\/platform-alpha/);
   assert.equal(document.getElementById("platform-oncall-errors").textContent, "1");
   assert.equal(document.getElementById("platform-oncall-warnings").textContent, "1");
   assert.equal(document.getElementById("platform-oncall-waiting").textContent, "1");
@@ -943,6 +1041,8 @@ function createDocumentStub() {
     "platform-action-status",
     "platform-nodes-empty",
     "platform-nodes-list",
+    "platform-node-detail-status",
+    "platform-node-detail",
     "platform-summary-total",
     "platform-summary-online",
     "platform-summary-draining",

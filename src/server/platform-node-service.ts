@@ -6,10 +6,13 @@ import type {
   ManagedAgentPlatformNodeRegisterPayload,
   ManagedAgentPlatformWorkerNodeDetailInput,
   ManagedAgentPlatformWorkerNodeDetailResult,
+  ManagedAgentPlatformWorkerNodeExecutionLeaseContext,
+  ManagedAgentPlatformWorkerNodeLeaseRecoverySummary,
   ManagedAgentPlatformWorkerNodeLeaseRecoveryResult,
   ManagedAgentPlatformWorkerNodeMutationResult,
   ManagedAgentPlatformWorkerNodeRecord,
   ManagedAgentPlatformWorkerOrganizationRecord,
+  ManagedAgentPlatformWorkerReclaimedLeaseContext,
 } from "themis-contracts/managed-agent-platform-worker";
 
 export interface PlatformNodeService {
@@ -44,6 +47,7 @@ export interface PlatformNodeServiceSnapshot {
 export interface SnapshotCapablePlatformNodeService extends PlatformNodeService {
   exportSnapshot(): PlatformNodeServiceSnapshot;
   replaceSnapshot(snapshot: PlatformNodeServiceSnapshot): void;
+  connectExecutionLeaseRuntime(runtime: PlatformNodeExecutionLeaseRuntime | null): void;
 }
 
 export interface InMemoryPlatformNodeServiceOptions {
@@ -53,6 +57,30 @@ export interface InMemoryPlatformNodeServiceOptions {
   nodes?: ManagedAgentPlatformWorkerNodeRecord[];
 }
 
+export interface PlatformNodeExecutionLeaseRuntimeInput {
+  ownerPrincipalId: string;
+  organization: ManagedAgentPlatformWorkerOrganizationRecord;
+  node: ManagedAgentPlatformWorkerNodeRecord;
+}
+
+export interface PlatformNodeExecutionLeaseRecoveryRuntimeInput extends PlatformNodeExecutionLeaseRuntimeInput {
+  failureCode?: string;
+  failureMessage?: string;
+  now: string;
+}
+
+export interface PlatformNodeExecutionLeaseRuntime {
+  listNodeExecutionLeaseContexts(
+    input: PlatformNodeExecutionLeaseRuntimeInput,
+  ): ManagedAgentPlatformWorkerNodeExecutionLeaseContext[];
+  reclaimNodeExecutionLeases(
+    input: PlatformNodeExecutionLeaseRecoveryRuntimeInput,
+  ): {
+    summary: ManagedAgentPlatformWorkerNodeLeaseRecoverySummary;
+    reclaimedLeases: ManagedAgentPlatformWorkerReclaimedLeaseContext[];
+  };
+}
+
 export function createInMemoryPlatformNodeService(
   options: InMemoryPlatformNodeServiceOptions = {},
 ): SnapshotCapablePlatformNodeService {
@@ -60,6 +88,7 @@ export function createInMemoryPlatformNodeService(
   const generateNodeId = options.generateNodeId ?? (() => `node-${Math.random().toString(36).slice(2, 10)}`);
   const organizations = new Map<string, ManagedAgentPlatformWorkerOrganizationRecord>();
   const nodes = new Map<string, ManagedAgentPlatformWorkerNodeRecord>();
+  let executionLeaseRuntime: PlatformNodeExecutionLeaseRuntime | null = null;
 
   for (const organization of options.organizations ?? []) {
     organizations.set(organization.organizationId, {
@@ -99,6 +128,10 @@ export function createInMemoryPlatformNodeService(
     },
 
     replaceSnapshot,
+
+    connectExecutionLeaseRuntime(runtime) {
+      executionLeaseRuntime = runtime;
+    },
 
     registerNode(payload, context = {}) {
       const timestamp = now();
@@ -199,18 +232,20 @@ export function createInMemoryPlatformNodeService(
         return null;
       }
 
+      const recentExecutionLeases = executionLeaseRuntime
+        ? executionLeaseRuntime.listNodeExecutionLeaseContexts({
+          ownerPrincipalId: payload.ownerPrincipalId,
+          organization,
+          node,
+        }).sort(compareNodeExecutionLeaseContextsDesc)
+        : [];
+
       return {
         organization,
         node,
-        leaseSummary: {
-          totalCount: 0,
-          activeCount: 0,
-          expiredCount: 0,
-          releasedCount: 0,
-          revokedCount: 0,
-        },
-        activeExecutionLeases: [],
-        recentExecutionLeases: [],
+        leaseSummary: summarizeNodeExecutionLeases(recentExecutionLeases),
+        activeExecutionLeases: recentExecutionLeases.filter((context) => context.lease?.status === "active"),
+        recentExecutionLeases,
       };
     },
 
@@ -236,12 +271,23 @@ export function createInMemoryPlatformNodeService(
       return {
         organization: mutation.organization,
         node: mutation.node,
-        summary: {
-          activeLeaseCount: 0,
-          reclaimedRunCount: 0,
-          requeuedWorkItemCount: 0,
-        },
-        reclaimedLeases: [],
+        ...(executionLeaseRuntime
+          ? executionLeaseRuntime.reclaimNodeExecutionLeases({
+            ownerPrincipalId: payload.ownerPrincipalId,
+            organization: mutation.organization,
+            node: mutation.node,
+            failureCode: payload.failureCode,
+            failureMessage: payload.failureMessage,
+            now: now(),
+          })
+          : {
+            summary: {
+              activeLeaseCount: 0,
+              reclaimedRunCount: 0,
+              requeuedWorkItemCount: 0,
+            },
+            reclaimedLeases: [],
+          }),
       };
     },
   };
@@ -340,6 +386,67 @@ function normalizeUniqueStrings(values: string[] | undefined): string[] | undefi
 function normalizeOptionalIp(value: string | null | undefined): string | null {
   const normalized = normalizeText(value ?? undefined);
   return normalized || null;
+}
+
+function summarizeNodeExecutionLeases(
+  contexts: ManagedAgentPlatformWorkerNodeExecutionLeaseContext[],
+) {
+  const summary = {
+    totalCount: 0,
+    activeCount: 0,
+    expiredCount: 0,
+    releasedCount: 0,
+    revokedCount: 0,
+  };
+
+  for (const context of contexts) {
+    summary.totalCount += 1;
+
+    switch (context.lease?.status) {
+      case "active":
+        summary.activeCount += 1;
+        break;
+      case "expired":
+        summary.expiredCount += 1;
+        break;
+      case "released":
+        summary.releasedCount += 1;
+        break;
+      case "revoked":
+        summary.revokedCount += 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return summary;
+}
+
+function compareNodeExecutionLeaseContextsDesc(
+  left: ManagedAgentPlatformWorkerNodeExecutionLeaseContext,
+  right: ManagedAgentPlatformWorkerNodeExecutionLeaseContext,
+) {
+  const leftTimestamp = Date.parse(
+    left.lease?.updatedAt
+      ?? left.run?.updatedAt
+      ?? left.workItem?.updatedAt
+      ?? left.lease?.createdAt
+      ?? "",
+  );
+  const rightTimestamp = Date.parse(
+    right.lease?.updatedAt
+      ?? right.run?.updatedAt
+      ?? right.workItem?.updatedAt
+      ?? right.lease?.createdAt
+      ?? "",
+  );
+
+  if (Number.isFinite(leftTimestamp) && Number.isFinite(rightTimestamp) && leftTimestamp !== rightTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+
+  return String(right.lease?.leaseId ?? "").localeCompare(String(left.lease?.leaseId ?? ""), "en");
 }
 
 function normalizeSlotAvailable(value: number | undefined, slotCapacity: number | undefined): number {

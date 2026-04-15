@@ -391,6 +391,10 @@ textarea {
   margin-top: 18px;
 }
 
+.platform-split-grid--nodes {
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+}
+
 .platform-hotspots-list,
 .platform-oncall-list,
 .platform-waiting-list,
@@ -438,6 +442,133 @@ textarea {
 
 .platform-card-detail {
   min-height: 132px;
+}
+
+.platform-node-card {
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.platform-node-card:hover,
+.platform-node-card:focus-within {
+  transform: translateY(-1px);
+  border-color: rgba(35, 83, 71, 0.22);
+  box-shadow: 0 24px 42px rgba(22, 24, 19, 0.12);
+}
+
+.platform-node-card[data-selected="true"] {
+  border-color: rgba(35, 83, 71, 0.26);
+  box-shadow:
+    inset 0 0 0 1px rgba(35, 83, 71, 0.12),
+    0 24px 42px rgba(22, 24, 19, 0.12);
+}
+
+.platform-node-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.platform-node-detail-section {
+  display: grid;
+  gap: 12px;
+}
+
+.platform-node-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.platform-node-detail-head h3,
+.platform-node-detail-section h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.platform-node-detail-section h3 + .platform-inline-note {
+  margin-top: -4px;
+}
+
+.platform-node-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.platform-node-detail-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--platform-line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.platform-node-detail-card span {
+  color: var(--platform-muted);
+  font-size: 12px;
+}
+
+.platform-node-detail-card strong {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.platform-node-detail-list {
+  display: grid;
+  gap: 10px;
+}
+
+.platform-node-detail-item {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--platform-line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.platform-node-detail-item strong {
+  display: block;
+  font-size: 15px;
+}
+
+.platform-node-detail-meta,
+.platform-node-detail-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.platform-node-detail-capability-list {
+  display: grid;
+  gap: 8px;
+}
+
+.platform-node-detail-capability {
+  padding: 12px 14px;
+  border: 1px solid var(--platform-line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.platform-node-detail-capability strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.platform-node-detail-capability code {
+  display: inline-block;
+  margin: 0 8px 8px 0;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: rgba(23, 25, 21, 0.06);
+  font-size: 12px;
 }
 
 .platform-diagnosis-card,
@@ -636,6 +767,11 @@ textarea {
 
   .platform-summary-grid--compact-two {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .platform-split-grid--nodes,
+  .platform-node-detail-grid {
+    grid-template-columns: 1fr;
   }
 
   .platform-summary-grid--compact-three {

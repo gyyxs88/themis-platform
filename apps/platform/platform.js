@@ -182,6 +182,8 @@ export function initializePlatformSurface(options = {}) {
     actionStatus: documentRef.getElementById("platform-action-status"),
     nodesEmpty: documentRef.getElementById("platform-nodes-empty"),
     nodesList: documentRef.getElementById("platform-nodes-list"),
+    nodeDetailStatus: documentRef.getElementById("platform-node-detail-status"),
+    nodeDetail: documentRef.getElementById("platform-node-detail"),
     summaryTotal: documentRef.getElementById("platform-summary-total"),
     summaryOnline: documentRef.getElementById("platform-summary-online"),
     summaryDraining: documentRef.getElementById("platform-summary-draining"),
@@ -293,6 +295,8 @@ export function initializePlatformSurface(options = {}) {
       storage?.getItem?.(OWNER_PRINCIPAL_STORAGE_KEY) ?? "",
     ),
     nodes: [],
+    selectedNodeId: "",
+    selectedNodeDetail: null,
     oncallSummary: createEmptyOncallSummary(),
     governanceOverview: {
       summary: { ...EMPTY_GOVERNANCE_SUMMARY },
@@ -398,10 +402,14 @@ export function initializePlatformSurface(options = {}) {
       total: state.agents.length,
       projects: state.projectBindings.length,
     };
+    const selectedNodeLabel = state.selectedNodeDetail?.node?.displayName
+      || state.selectedNodeDetail?.node?.nodeId
+      || state.selectedNodeId;
     const selectedMailboxItem = state.mailboxItems.find(
       (item) => item?.entry?.mailboxEntryId === state.selectedMailboxEntryId,
     ) ?? null;
     const hasNodes = state.nodes.length > 0;
+    const hasSelectedNodeDetail = Boolean(state.selectedNodeDetail?.node?.nodeId);
     const hasOncallRecommendations = oncallRecommendations.length > 0;
     const hasWaitingItems = state.waitingItems.length > 0;
     const hasCollaborationParents = collaborationParents.length > 0;
@@ -505,6 +513,15 @@ export function initializePlatformSurface(options = {}) {
         : selectedAgentLabel
           ? `当前选中 agent：${selectedAgentLabel}`
           : "可直接在这里创建 agent，并维护项目工作区绑定。";
+    const nodeDetailStatusMessage = state.loadErrorMessage
+      ? state.loadErrorMessage
+      : state.loading
+        ? "正在读取节点详情。"
+        : selectedNodeLabel
+          ? `当前选中：${selectedNodeLabel}`
+          : hasNodes
+            ? "点击左侧节点卡片，查看当前 lease、能力与心跳详情。"
+            : "选择左侧节点后，这里会显示 lease、能力与心跳详情。";
 
     if (dom.sessionTitle) {
       dom.sessionTitle.textContent = state.tokenLabel ? `已登录：${state.tokenLabel}` : "未启用平台 Web 鉴权";
@@ -645,8 +662,20 @@ export function initializePlatformSurface(options = {}) {
 
     if (dom.nodesList) {
       dom.nodesList.innerHTML = hasNodes
-        ? state.nodes.map((node) => renderNodeCard(node)).join("")
+        ? state.nodes.map((node) => renderNodeCard(node, state.selectedNodeId)).join("")
         : "";
+    }
+
+    if (dom.nodeDetailStatus) {
+      dom.nodeDetailStatus.textContent = nodeDetailStatusMessage;
+    }
+
+    if (dom.nodeDetail) {
+      dom.nodeDetail.innerHTML = hasSelectedNodeDetail
+        ? renderNodeDetail(state.selectedNodeDetail, state.oncallSummary?.generatedAt)
+        : hasNodes
+          ? '<p class="platform-inline-note">点击任意节点卡片，查看当前 detail。</p>'
+          : "";
     }
 
     if (dom.oncallStatus) {
@@ -992,6 +1021,8 @@ export function initializePlatformSurface(options = {}) {
     if (!state.ownerPrincipalId || typeof fetchFn !== "function") {
       state.loadErrorMessage = "";
       state.nodes = [];
+      state.selectedNodeId = "";
+      state.selectedNodeDetail = null;
       state.oncallSummary = createEmptyOncallSummary();
       state.governanceOverview = {
         summary: { ...EMPTY_GOVERNANCE_SUMMARY },
@@ -1086,6 +1117,19 @@ export function initializePlatformSurface(options = {}) {
       state.agents = Array.isArray(agentsPayload?.agents) ? agentsPayload.agents : [];
       state.projectBindings = Array.isArray(projectBindingsPayload?.bindings) ? projectBindingsPayload.bindings : [];
 
+      if (!state.nodes.some((node) => node?.nodeId === state.selectedNodeId)) {
+        state.selectedNodeId = typeof state.nodes[0]?.nodeId === "string"
+          ? state.nodes[0].nodeId
+          : "";
+      }
+
+      state.selectedNodeDetail = state.selectedNodeId
+        ? await requestPlatformJson(fetchFn, "/api/platform/nodes/detail", {
+          ownerPrincipalId: state.ownerPrincipalId,
+          nodeId: state.selectedNodeId,
+        }, "读取节点详情失败。")
+        : null;
+
       const availableHandoffAgentIds = state.collaborationDashboard.parents
         .map((parent) => normalizeOwnerPrincipalId(parent?.items?.[0]?.targetAgentId))
         .filter(Boolean);
@@ -1165,6 +1209,8 @@ export function initializePlatformSurface(options = {}) {
         : null;
     } catch (error) {
       state.nodes = [];
+      state.selectedNodeId = "";
+      state.selectedNodeDetail = null;
       state.oncallSummary = createEmptyOncallSummary();
       state.governanceOverview = {
         summary: { ...EMPTY_GOVERNANCE_SUMMARY },
@@ -1218,6 +1264,30 @@ export function initializePlatformSurface(options = {}) {
     } catch (error) {
       state.selectedRunDetail = null;
       state.loadErrorMessage = error instanceof Error ? error.message : "读取 run detail 失败。";
+    } finally {
+      render();
+    }
+  };
+
+  const loadNodeDetail = async (nodeId) => {
+    const normalizedNodeId = typeof nodeId === "string" ? nodeId.trim() : "";
+
+    if (!normalizedNodeId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.selectedNodeId = normalizedNodeId;
+    render();
+
+    try {
+      state.selectedNodeDetail = await requestPlatformJson(fetchFn, "/api/platform/nodes/detail", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        nodeId: normalizedNodeId,
+      }, "读取节点详情失败。");
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.selectedNodeDetail = null;
+      state.loadErrorMessage = error instanceof Error ? error.message : "读取节点详情失败。";
     } finally {
       render();
     }
@@ -1808,15 +1878,24 @@ export function initializePlatformSurface(options = {}) {
       ? event.target.closest("[data-platform-node-action]")
       : null;
 
-    if (!actionButton) {
+    if (actionButton) {
+      const action = actionButton.getAttribute("data-platform-node-action");
+      const nodeId = actionButton.getAttribute("data-platform-node-id");
+
+      if (action === "drain" || action === "offline" || action === "reclaim") {
+        void updateNodeStatus(nodeId, action);
+      }
+
       return;
     }
 
-    const action = actionButton.getAttribute("data-platform-node-action");
-    const nodeId = actionButton.getAttribute("data-platform-node-id");
+    const nodeCard = event.target instanceof HTMLElement
+      ? event.target.closest("[data-platform-node-card-id]")
+      : null;
+    const nodeId = nodeCard?.getAttribute("data-platform-node-card-id");
 
-    if (action === "drain" || action === "offline" || action === "reclaim") {
-      void updateNodeStatus(nodeId, action);
+    if (nodeId) {
+      void loadNodeDetail(nodeId);
     }
   });
 
@@ -1982,6 +2061,7 @@ export function initializePlatformSurface(options = {}) {
   return {
     loadNodes: loadPlatformData,
     loadPlatformData,
+    loadNodeDetail,
     loadAgentHandoffs,
     loadAgentDetail,
     createAgent,
@@ -2004,13 +2084,14 @@ export function initializePlatformSurface(options = {}) {
   };
 }
 
-function renderNodeCard(node) {
+function renderNodeCard(node, selectedNodeId = "") {
   const status = normalizeNodeStatus(node?.status);
   const statusLabel = resolveNodeStatusLabel(status);
   const labels = Array.isArray(node?.labels) ? node.labels : [];
   const workspaceCapabilities = Array.isArray(node?.workspaceCapabilities) ? node.workspaceCapabilities : [];
   const credentialCapabilities = Array.isArray(node?.credentialCapabilities) ? node.credentialCapabilities : [];
   const providerCapabilities = Array.isArray(node?.providerCapabilities) ? node.providerCapabilities : [];
+  const isSelected = Boolean(node?.nodeId) && node.nodeId === selectedNodeId;
   const metaChips = [
     `槽位 ${normalizeNumber(node?.slotAvailable, 0)}/${normalizeNumber(node?.slotCapacity, 0)}`,
     node?.nodeIp ? `IP ${node.nodeIp}` : "",
@@ -2025,7 +2106,11 @@ function renderNodeCard(node) {
   ].filter(Boolean);
   const actions = resolveNodeActions(node);
 
-  return `<article class="platform-node-card">
+  return `<article
+    class="platform-node-card"
+    data-platform-node-card-id="${escapeHtml(node?.nodeId || "")}"
+    data-selected="${isSelected ? "true" : "false"}"
+  >
     <div class="platform-node-head">
       <div>
         <h3 class="platform-node-title">${escapeHtml(node?.displayName || node?.nodeId || "未命名节点")}</h3>
@@ -2051,6 +2136,242 @@ function renderNodeCard(node) {
       >${escapeHtml(action.label)}</button>`).join("")}
     </div>
   </article>`;
+}
+
+function renderNodeDetail(detail, referenceNow = "") {
+  const node = detail?.node ?? {};
+  const status = normalizeNodeStatus(node?.status);
+  const statusLabel = resolveNodeStatusLabel(status);
+  const heartbeat = summarizeNodeHeartbeat(node, referenceNow);
+  const leaseSummary = detail?.leaseSummary ?? {};
+  const activeExecutionLeases = Array.isArray(detail?.activeExecutionLeases) ? detail.activeExecutionLeases : [];
+  const recentExecutionLeases = Array.isArray(detail?.recentExecutionLeases) ? detail.recentExecutionLeases : [];
+  const capabilitySections = [
+    {
+      label: "工作区能力",
+      values: Array.isArray(node?.workspaceCapabilities) ? node.workspaceCapabilities : [],
+      emptyText: "当前没有声明工作区能力。",
+    },
+    {
+      label: "凭据能力",
+      values: Array.isArray(node?.credentialCapabilities) ? node.credentialCapabilities : [],
+      emptyText: "当前没有声明凭据能力。",
+    },
+    {
+      label: "Provider 能力",
+      values: Array.isArray(node?.providerCapabilities) ? node.providerCapabilities : [],
+      emptyText: "当前没有声明 Provider 能力。",
+    },
+    {
+      label: "节点标签",
+      values: Array.isArray(node?.labels) ? node.labels : [],
+      emptyText: "当前没有节点标签。",
+    },
+  ];
+
+  return `<div class="platform-node-detail">
+    <section class="platform-node-detail-section">
+      <div class="platform-node-detail-head">
+        <div>
+          <h3>${escapeHtml(node?.displayName || node?.nodeId || "未命名节点")}</h3>
+          <p class="platform-inline-note">这里优先回答三件事：这台节点是谁、现在能不能接单、手上还挂着什么 lease。</p>
+        </div>
+        <div class="platform-node-detail-meta">
+          <span class="platform-chip status-${status}">${escapeHtml(statusLabel)}</span>
+          <span class="platform-chip">${escapeHtml(node?.nodeId || "未知 nodeId")}</span>
+        </div>
+      </div>
+
+      <div class="platform-node-detail-grid">
+        <article class="platform-node-detail-card">
+          <span>节点 IP</span>
+          <strong>${escapeHtml(node?.nodeIp || "未记录")}</strong>
+        </article>
+        <article class="platform-node-detail-card">
+          <span>槽位占用</span>
+          <strong>${escapeHtml(`${normalizeNumber(node?.slotAvailable, 0)}/${normalizeNumber(node?.slotCapacity, 0)}`)}</strong>
+        </article>
+        <article class="platform-node-detail-card">
+          <span>心跳新鲜度</span>
+          <strong>${escapeHtml(heartbeat.freshnessLabel)}</strong>
+        </article>
+        <article class="platform-node-detail-card">
+          <span>心跳年龄</span>
+          <strong>${escapeHtml(heartbeat.ageLabel)}</strong>
+        </article>
+        <article class="platform-node-detail-card">
+          <span>剩余 TTL</span>
+          <strong>${escapeHtml(heartbeat.remainingLabel)}</strong>
+        </article>
+        <article class="platform-node-detail-card">
+          <span>最近心跳</span>
+          <strong>${escapeHtml(node?.lastHeartbeatAt ? formatTimestamp(node.lastHeartbeatAt) : "未上报")}</strong>
+        </article>
+      </div>
+    </section>
+
+    <section class="platform-node-detail-section">
+      <div>
+        <h3>Lease 汇总</h3>
+        <p class="platform-inline-note">这里直接看这台节点当前到底挂了多少 active / released / revoked lease。</p>
+      </div>
+      <div class="platform-node-detail-grid">
+        <article class="platform-node-detail-card">
+          <span>总 lease</span>
+          <strong>${escapeHtml(String(normalizeNumber(leaseSummary?.totalCount, 0)))}</strong>
+        </article>
+        <article class="platform-node-detail-card">
+          <span>活动中</span>
+          <strong>${escapeHtml(String(normalizeNumber(leaseSummary?.activeCount, 0)))}</strong>
+        </article>
+        <article class="platform-node-detail-card">
+          <span>已释放</span>
+          <strong>${escapeHtml(String(normalizeNumber(leaseSummary?.releasedCount, 0)))}</strong>
+        </article>
+        <article class="platform-node-detail-card">
+          <span>已回收</span>
+          <strong>${escapeHtml(String(normalizeNumber(leaseSummary?.revokedCount, 0)))}</strong>
+        </article>
+        <article class="platform-node-detail-card">
+          <span>已过期</span>
+          <strong>${escapeHtml(String(normalizeNumber(leaseSummary?.expiredCount, 0)))}</strong>
+        </article>
+        <article class="platform-node-detail-card">
+          <span>组织</span>
+          <strong>${escapeHtml(node?.organizationId || "未知组织")}</strong>
+        </article>
+      </div>
+    </section>
+
+    <section class="platform-node-detail-section">
+      <div>
+        <h3>能力明细</h3>
+        <p class="platform-inline-note">不再只看数量，直接把真实 workspace / credential / provider / label 列出来。</p>
+      </div>
+      <div class="platform-node-detail-capability-list">
+        ${capabilitySections.map((section) => renderNodeCapabilitySection(section)).join("")}
+      </div>
+    </section>
+
+    <section class="platform-node-detail-section">
+      <div>
+        <h3>活动 Lease</h3>
+        <p class="platform-inline-note">最值钱的是它挂着哪个 run、对应哪个 work-item、属于哪个 agent。</p>
+      </div>
+      <div class="platform-node-detail-list">
+        ${renderNodeExecutionLeaseList(activeExecutionLeases, "当前没有活动 lease。")}
+      </div>
+    </section>
+
+    <section class="platform-node-detail-section">
+      <div>
+        <h3>最近 Lease 轨迹</h3>
+        <p class="platform-inline-note">这里保留最近 lease 视图，便于快速回答“刚才这台节点做过什么”。</p>
+      </div>
+      <div class="platform-node-detail-list">
+        ${renderNodeExecutionLeaseList(recentExecutionLeases, "当前还没有最近 lease 记录。")}
+      </div>
+    </section>
+  </div>`;
+}
+
+function renderNodeCapabilitySection(section) {
+  const values = Array.isArray(section?.values) ? section.values.filter(Boolean) : [];
+
+  return `<article class="platform-node-detail-capability">
+    <strong>${escapeHtml(section?.label || "能力")}</strong>
+    ${values.length > 0
+      ? values.map((value) => `<code>${escapeHtml(String(value))}</code>`).join("")
+      : `<p class="platform-inline-note">${escapeHtml(section?.emptyText || "暂无数据。")}</p>`}
+  </article>`;
+}
+
+function renderNodeExecutionLeaseList(items, emptyText) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return `<p class="platform-inline-note">${escapeHtml(emptyText)}</p>`;
+  }
+
+  return items.map((item) => renderNodeExecutionLeaseCard(item)).join("");
+}
+
+function renderNodeExecutionLeaseCard(item) {
+  const workItemGoal = item?.workItem?.goal || item?.workItem?.workItemId || item?.lease?.workItemId || "未知 work-item";
+  const targetAgentLabel = item?.targetAgent?.displayName || item?.targetAgent?.agentId || item?.lease?.targetAgentId || "未绑定 agent";
+  const metaChips = [
+    item?.run?.status ? `Run ${item.run.status}` : "",
+    item?.workItem?.status ? `Work-item ${item.workItem.status}` : "",
+    item?.lease?.status ? `Lease ${item.lease.status}` : "",
+    item?.run?.runId || item?.lease?.runId || "",
+    item?.lease?.leaseId || "",
+    item?.lease?.updatedAt ? `更新 ${formatTimestamp(item.lease.updatedAt)}` : "",
+  ].filter(Boolean);
+
+  return `<article class="platform-node-detail-item">
+    <div>
+      <strong>${escapeHtml(workItemGoal)}</strong>
+      <p class="platform-inline-note">targetAgent：${escapeHtml(targetAgentLabel)}</p>
+    </div>
+    <div class="platform-node-detail-meta">
+      ${metaChips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+    </div>
+  </article>`;
+}
+
+function summarizeNodeHeartbeat(node, referenceNow = "") {
+  const lastHeartbeatAt = typeof node?.lastHeartbeatAt === "string" ? node.lastHeartbeatAt : "";
+  const heartbeatTtlSeconds = normalizeNumber(node?.heartbeatTtlSeconds, 0);
+  const lastHeartbeatTs = Date.parse(lastHeartbeatAt);
+  const referenceTs = Date.parse(typeof referenceNow === "string" ? referenceNow : "");
+  const nowTs = Number.isFinite(referenceTs) ? referenceTs : Date.now();
+
+  if (!Number.isFinite(lastHeartbeatTs)) {
+    return {
+      freshnessLabel: "未知",
+      ageLabel: "未上报",
+      remainingLabel: heartbeatTtlSeconds > 0 ? `${heartbeatTtlSeconds}s` : "未配置",
+    };
+  }
+
+  if (heartbeatTtlSeconds <= 0) {
+    return {
+      freshnessLabel: "TTL 未配置",
+      ageLabel: formatDurationSeconds(Math.max(0, Math.floor((nowTs - lastHeartbeatTs) / 1000))),
+      remainingLabel: "未配置",
+    };
+  }
+
+  const ageSeconds = Math.max(0, Math.floor((nowTs - lastHeartbeatTs) / 1000));
+  const remainingSeconds = heartbeatTtlSeconds - ageSeconds;
+
+  return {
+    freshnessLabel: remainingSeconds > heartbeatTtlSeconds / 2
+      ? "新鲜"
+      : remainingSeconds >= 0
+        ? "临近过期"
+        : "已过期",
+    ageLabel: formatDurationSeconds(ageSeconds),
+    remainingLabel: remainingSeconds >= 0
+      ? formatDurationSeconds(remainingSeconds)
+      : `超时 ${formatDurationSeconds(Math.abs(remainingSeconds))}`,
+  };
+}
+
+function formatDurationSeconds(value) {
+  const totalSeconds = Math.max(0, normalizeNumber(value, 0));
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return seconds > 0 ? `${hours}h ${minutes}m ${seconds}s` : `${hours}h ${minutes}m`;
+  }
+
+  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
 function renderHotspotCard(hotspot) {

@@ -112,3 +112,189 @@ test("createInMemoryPlatformNodeService 会支持 register、heartbeat、list �
   });
   assert.deepEqual(reclaim?.reclaimedLeases, []);
 });
+
+test("createInMemoryPlatformNodeService 接入 execution lease runtime 后会返回真实 detail 与 reclaim", () => {
+  const service = createInMemoryPlatformNodeService({
+    now: () => "2026-04-14T09:10:00.000Z",
+    generateNodeId: () => "node-runtime",
+    organizations: [{
+      organizationId: "org-platform",
+      ownerPrincipalId: "principal-platform-owner",
+      displayName: "Platform Team",
+      slug: "platform-team",
+      createdAt: "2026-04-14T09:00:00.000Z",
+      updatedAt: "2026-04-14T09:00:00.000Z",
+    }],
+  });
+
+  service.registerNode({
+    ownerPrincipalId: "principal-platform-owner",
+    node: {
+      displayName: "Worker Runtime",
+      slotCapacity: 2,
+      slotAvailable: 1,
+    },
+  });
+
+  service.connectExecutionLeaseRuntime({
+    listNodeExecutionLeaseContexts() {
+      return [{
+        lease: {
+          leaseId: "lease-active",
+          runId: "run-active",
+          nodeId: "node-runtime",
+          workItemId: "work-item-active",
+          status: "active",
+          createdAt: "2026-04-14T09:02:00.000Z",
+          updatedAt: "2026-04-14T09:06:00.000Z",
+        },
+        run: {
+          runId: "run-active",
+          organizationId: "org-platform",
+          workItemId: "work-item-active",
+          nodeId: "node-runtime",
+          status: "running",
+          createdAt: "2026-04-14T09:02:00.000Z",
+          updatedAt: "2026-04-14T09:06:00.000Z",
+        },
+        workItem: {
+          workItemId: "work-item-active",
+          organizationId: "org-platform",
+          targetAgentId: "agent-active",
+          sourceType: "human",
+          goal: "执行运行中的节点任务",
+          status: "running",
+          priority: "high",
+          createdAt: "2026-04-14T09:02:00.000Z",
+          updatedAt: "2026-04-14T09:06:00.000Z",
+        },
+        targetAgent: {
+          agentId: "agent-active",
+          organizationId: "org-platform",
+          displayName: "Agent Active",
+          departmentRole: "Platform",
+          status: "active",
+          createdAt: "2026-04-14T09:02:00.000Z",
+          updatedAt: "2026-04-14T09:02:00.000Z",
+        },
+      }, {
+        lease: {
+          leaseId: "lease-released",
+          runId: "run-released",
+          nodeId: "node-runtime",
+          workItemId: "work-item-released",
+          status: "released",
+          createdAt: "2026-04-14T09:01:00.000Z",
+          updatedAt: "2026-04-14T09:03:00.000Z",
+        },
+        run: {
+          runId: "run-released",
+          organizationId: "org-platform",
+          workItemId: "work-item-released",
+          nodeId: "node-runtime",
+          status: "completed",
+          createdAt: "2026-04-14T09:01:00.000Z",
+          updatedAt: "2026-04-14T09:03:00.000Z",
+        },
+        workItem: {
+          workItemId: "work-item-released",
+          organizationId: "org-platform",
+          targetAgentId: "agent-released",
+          sourceType: "human",
+          goal: "已完成节点任务",
+          status: "completed",
+          priority: "normal",
+          createdAt: "2026-04-14T09:01:00.000Z",
+          updatedAt: "2026-04-14T09:03:00.000Z",
+        },
+        targetAgent: {
+          agentId: "agent-released",
+          organizationId: "org-platform",
+          displayName: "Agent Released",
+          departmentRole: "Platform",
+          status: "active",
+          createdAt: "2026-04-14T09:01:00.000Z",
+          updatedAt: "2026-04-14T09:01:00.000Z",
+        },
+      }];
+    },
+    reclaimNodeExecutionLeases() {
+      return {
+        summary: {
+          activeLeaseCount: 1,
+          reclaimedRunCount: 1,
+          requeuedWorkItemCount: 1,
+        },
+        reclaimedLeases: [{
+          lease: {
+            leaseId: "lease-active",
+            runId: "run-active",
+            nodeId: "node-runtime",
+            workItemId: "work-item-active",
+            status: "revoked",
+            createdAt: "2026-04-14T09:02:00.000Z",
+            updatedAt: "2026-04-14T09:10:00.000Z",
+          },
+          run: {
+            runId: "run-active",
+            organizationId: "org-platform",
+            workItemId: "work-item-active",
+            nodeId: "node-runtime",
+            status: "interrupted",
+            createdAt: "2026-04-14T09:02:00.000Z",
+            updatedAt: "2026-04-14T09:10:00.000Z",
+          },
+          workItem: {
+            workItemId: "work-item-active",
+            organizationId: "org-platform",
+            targetAgentId: "agent-active",
+            sourceType: "human",
+            goal: "执行运行中的节点任务",
+            status: "queued",
+            priority: "high",
+            createdAt: "2026-04-14T09:02:00.000Z",
+            updatedAt: "2026-04-14T09:10:00.000Z",
+          },
+          targetAgent: {
+            agentId: "agent-active",
+            organizationId: "org-platform",
+            displayName: "Agent Active",
+            departmentRole: "Platform",
+            status: "active",
+            createdAt: "2026-04-14T09:02:00.000Z",
+            updatedAt: "2026-04-14T09:02:00.000Z",
+          },
+          recoveryAction: "requeued",
+        }],
+      };
+    },
+  });
+
+  const detail = service.getNodeDetail({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-runtime",
+  });
+  assert.deepEqual(detail?.leaseSummary, {
+    totalCount: 2,
+    activeCount: 1,
+    expiredCount: 0,
+    releasedCount: 1,
+    revokedCount: 0,
+  });
+  assert.equal(detail?.activeExecutionLeases.length, 1);
+  assert.equal(detail?.recentExecutionLeases[0]?.lease.leaseId, "lease-active");
+
+  service.offlineNode({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-runtime",
+  });
+
+  const reclaim = service.reclaimNode({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-runtime",
+  });
+  assert.equal(reclaim?.summary.activeLeaseCount, 1);
+  assert.equal(reclaim?.summary.reclaimedRunCount, 1);
+  assert.equal(reclaim?.summary.requeuedWorkItemCount, 1);
+  assert.equal(reclaim?.reclaimedLeases[0]?.recoveryAction, "requeued");
+});

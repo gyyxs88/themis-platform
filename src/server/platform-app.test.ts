@@ -122,7 +122,7 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
         priority: "urgent",
         waitingFor: "human",
         createdAt: "2026-04-14T09:20:00.000Z",
-        updatedAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:30:00.000Z",
       },
       run: {
         runId: "run-beta",
@@ -184,7 +184,7 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
         priority: "normal",
         waitingFor: "agent",
         createdAt: "2026-04-14T09:25:00.000Z",
-        updatedAt: "2026-04-14T09:25:00.000Z",
+        updatedAt: "2026-04-14T09:30:00.000Z",
       },
       run: {
         runId: "run-gamma",
@@ -478,13 +478,13 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     assert.equal(detailPayload.node?.nodeId, "node-alpha");
     assert.equal(detailPayload.node?.nodeIp, "192.168.31.208");
     assert.deepEqual(detailPayload.leaseSummary, {
-      totalCount: 0,
-      activeCount: 0,
+      totalCount: 3,
+      activeCount: 3,
       expiredCount: 0,
       releasedCount: 0,
       revokedCount: 0,
     });
-    assert.deepEqual(detailPayload.activeExecutionLeases, []);
+    assert.equal(detailPayload.activeExecutionLeases?.length, 3);
 
     const heartbeat = await fetch(`${baseUrl}/api/platform/nodes/heartbeat`, {
       method: "POST",
@@ -556,16 +556,25 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     const reclaimPayload = await reclaim.json() as {
       node?: { status?: string; slotAvailable?: number };
       summary?: { activeLeaseCount?: number; reclaimedRunCount?: number; requeuedWorkItemCount?: number };
-      reclaimedLeases?: Array<unknown>;
+      reclaimedLeases?: Array<{
+        lease?: { leaseId?: string };
+        run?: { status?: string };
+        workItem?: { status?: string };
+        recoveryAction?: string;
+      }>;
     };
     assert.equal(reclaimPayload.node?.status, "offline");
     assert.equal(reclaimPayload.node?.slotAvailable, 0);
     assert.deepEqual(reclaimPayload.summary, {
-      activeLeaseCount: 0,
-      reclaimedRunCount: 0,
+      activeLeaseCount: 2,
+      reclaimedRunCount: 2,
       requeuedWorkItemCount: 0,
     });
-    assert.deepEqual(reclaimPayload.reclaimedLeases, []);
+    assert.equal(reclaimPayload.reclaimedLeases?.length, 2);
+    const waitingLease = reclaimPayload.reclaimedLeases?.find((item) => item?.lease?.leaseId === "lease-beta");
+    assert.equal(waitingLease?.run?.status, "interrupted");
+    assert.equal(waitingLease?.workItem?.status, "waiting_human");
+    assert.equal(waitingLease?.recoveryAction, "waiting_preserved");
 
     const governanceOverview = await fetch(`${baseUrl}/api/platform/agents/governance-overview`, {
       method: "POST",
@@ -631,7 +640,7 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
         priority: "urgent",
         waitingFor: "human",
         createdAt: "2026-04-14T09:20:00.000Z",
-        updatedAt: "2026-04-14T09:20:00.000Z",
+        updatedAt: "2026-04-14T09:30:00.000Z",
       },
       {
         workItemId: "work-item-gamma",
@@ -643,7 +652,7 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
         priority: "normal",
         waitingFor: "agent",
         createdAt: "2026-04-14T09:25:00.000Z",
-        updatedAt: "2026-04-14T09:25:00.000Z",
+        updatedAt: "2026-04-14T09:30:00.000Z",
       },
     ]);
 
@@ -682,7 +691,7 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
             priority: "urgent",
             waitingFor: "human",
             createdAt: "2026-04-14T09:20:00.000Z",
-            updatedAt: "2026-04-14T09:20:00.000Z",
+            updatedAt: "2026-04-14T09:30:00.000Z",
           },
           {
             workItemId: "work-item-gamma",
@@ -694,7 +703,7 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
             priority: "normal",
             waitingFor: "agent",
             createdAt: "2026-04-14T09:25:00.000Z",
-            updatedAt: "2026-04-14T09:25:00.000Z",
+            updatedAt: "2026-04-14T09:30:00.000Z",
           },
         ],
       },

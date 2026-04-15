@@ -45,6 +45,7 @@ import type {
   ManagedAgentPlatformProjectWorkspaceBindingUpsertPayload,
 } from "themis-contracts/managed-agent-platform-projects";
 import type { ManagedAgentPlatformOncallSummaryPayload } from "themis-contracts/managed-agent-platform-oncall";
+import type { ManagedAgentPlatformWorkItemRecord } from "themis-contracts/managed-agent-platform-shared";
 import { readPlatformAsset } from "./platform-assets.js";
 import {
   createInMemoryPlatformCollaborationService,
@@ -55,7 +56,11 @@ import {
   type PlatformControlPlaneService,
 } from "./platform-control-plane-service.js";
 import { createInMemoryPlatformGovernanceService, type PlatformGovernanceService } from "./platform-governance-service.js";
-import { createInMemoryPlatformNodeService, type PlatformNodeService } from "./platform-node-service.js";
+import {
+  createInMemoryPlatformNodeService,
+  type PlatformNodeExecutionLeaseRuntime,
+  type PlatformNodeService,
+} from "./platform-node-service.js";
 import { createInMemoryPlatformOncallService, type PlatformOncallService } from "./platform-oncall-service.js";
 import { createInMemoryPlatformWorkerRunService, type PlatformWorkerRunService } from "./platform-worker-run-service.js";
 import {
@@ -100,6 +105,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
   const workerRunService = options.workerRunService ?? createInMemoryPlatformWorkerRunService({
     nodeService,
   });
+  connectNodeExecutionLeaseRuntime(nodeService, workerRunService);
   const governanceService = options.governanceService ?? createInMemoryPlatformGovernanceService({
     workerRunService,
   });
@@ -809,6 +815,159 @@ function resolveWorkspacePathForQueuedWorkItem(
 
 async function recordStateMutation(options: HandlePlatformRequestOptions): Promise<void> {
   await options.onStateMutation?.();
+}
+
+function connectNodeExecutionLeaseRuntime(
+  nodeService: PlatformNodeService,
+  workerRunService: PlatformWorkerRunService,
+) {
+  if (!("connectExecutionLeaseRuntime" in nodeService) || typeof nodeService.connectExecutionLeaseRuntime !== "function") {
+    return;
+  }
+
+  const runtime: PlatformNodeExecutionLeaseRuntime = {
+    listNodeExecutionLeaseContexts({ ownerPrincipalId, node }) {
+      return workerRunService.listAssignedRuns({ ownerPrincipalId })
+        .filter((assignedRun) => assignedRun.node.nodeId === node.nodeId)
+        .sort(compareAssignedRunsByLeaseUpdatedDesc)
+        .map((assignedRun) => ({
+          lease: { ...assignedRun.executionLease },
+          run: { ...assignedRun.run },
+          workItem: { ...assignedRun.workItem },
+          targetAgent: { ...assignedRun.targetAgent },
+        }));
+    },
+
+    reclaimNodeExecutionLeases({ ownerPrincipalId, node, now }) {
+      const reclaimedLeases = workerRunService.listAssignedRuns({ ownerPrincipalId })
+        .filter((assignedRun) => (
+          assignedRun.node.nodeId === node.nodeId
+          && assignedRun.executionLease.status === "active"
+          && !shouldPreserveQueuedCreatedLease(assignedRun)
+        ))
+        .sort(compareAssignedRunsByLeaseUpdatedDesc)
+        .map((assignedRun) => reclaimAssignedRunLease(workerRunService, assignedRun, now));
+
+      return {
+        summary: summarizeReclaimedNodeLeases(reclaimedLeases),
+        reclaimedLeases,
+      };
+    },
+  };
+
+  nodeService.connectExecutionLeaseRuntime(runtime);
+}
+
+function shouldPreserveQueuedCreatedLease(
+  assignedRun: ReturnType<PlatformWorkerRunService["listAssignedRuns"]>[number],
+) {
+  return assignedRun.run.status === "created" && assignedRun.workItem.status === "queued";
+}
+
+function reclaimAssignedRunLease(
+  workerRunService: PlatformWorkerRunService,
+  assignedRun: ReturnType<PlatformWorkerRunService["listAssignedRuns"]>[number],
+  now: string,
+) {
+  const workItemStatus = assignedRun.workItem.status;
+  const workItemPatch = buildRecoveredWorkItemPatch(workItemStatus, now);
+  const updatedAssignedRun = workerRunService.updateAssignedRunByWorkItem({
+    ownerPrincipalId: assignedRun.organization.ownerPrincipalId,
+    workItemId: assignedRun.workItem.workItemId,
+    ...(workItemPatch ? { workItemPatch } : {}),
+    runPatch: {
+      status: "interrupted",
+      updatedAt: now,
+    },
+    executionLeasePatch: {
+      status: "revoked",
+      updatedAt: now,
+    },
+  }) ?? assignedRun;
+  const recoveryAction = resolveNodeLeaseRecoveryAction(workItemStatus, updatedAssignedRun.workItem?.status);
+
+  return {
+    lease: { ...updatedAssignedRun.executionLease },
+    run: updatedAssignedRun.run ? { ...updatedAssignedRun.run } : null,
+    workItem: updatedAssignedRun.workItem ? { ...updatedAssignedRun.workItem } : null,
+    targetAgent: updatedAssignedRun.targetAgent ? { ...updatedAssignedRun.targetAgent } : null,
+    recoveryAction,
+  };
+}
+
+function buildRecoveredWorkItemPatch(
+  status: ManagedAgentPlatformWorkItemRecord["status"] | null | undefined,
+  now: string,
+): Partial<ManagedAgentPlatformWorkItemRecord> {
+  if (status === "planning" || status === "starting" || status === "running") {
+    return {
+      status: "queued",
+      waitingFor: null,
+      updatedAt: now,
+    };
+  }
+
+  if (status === "waiting_human" || status === "waiting_agent") {
+    return {
+      updatedAt: now,
+    };
+  }
+
+  return {
+    updatedAt: now,
+  };
+}
+
+function resolveNodeLeaseRecoveryAction(
+  previousWorkItemStatus: ManagedAgentPlatformWorkItemRecord["status"] | null | undefined,
+  nextWorkItemStatus: ManagedAgentPlatformWorkItemRecord["status"] | null | undefined,
+) {
+  if (
+    (previousWorkItemStatus === "planning" || previousWorkItemStatus === "starting" || previousWorkItemStatus === "running")
+    && nextWorkItemStatus === "queued"
+  ) {
+    return "requeued";
+  }
+
+  if (previousWorkItemStatus === "waiting_human" || previousWorkItemStatus === "waiting_agent") {
+    return "waiting_preserved";
+  }
+
+  return "lease_revoked";
+}
+
+function summarizeReclaimedNodeLeases(reclaimedLeases: Array<{ run: unknown; recoveryAction?: string }>) {
+  return {
+    activeLeaseCount: reclaimedLeases.length,
+    reclaimedRunCount: reclaimedLeases.filter((item) => item.run).length,
+    requeuedWorkItemCount: reclaimedLeases.filter((item) => item.recoveryAction === "requeued").length,
+  };
+}
+
+function compareAssignedRunsByLeaseUpdatedDesc(
+  left: ReturnType<PlatformWorkerRunService["listAssignedRuns"]>[number],
+  right: ReturnType<PlatformWorkerRunService["listAssignedRuns"]>[number],
+) {
+  const leftUpdatedAt = Date.parse(
+    left.executionLease.updatedAt
+      ?? left.run.updatedAt
+      ?? left.workItem.updatedAt
+      ?? left.executionLease.createdAt
+      ?? "",
+  );
+  const rightUpdatedAt = Date.parse(
+    right.executionLease.updatedAt
+      ?? right.run.updatedAt
+      ?? right.workItem.updatedAt
+      ?? right.executionLease.createdAt
+      ?? "",
+  );
+
+  if (Number.isFinite(leftUpdatedAt) && Number.isFinite(rightUpdatedAt) && leftUpdatedAt !== rightUpdatedAt) {
+    return rightUpdatedAt - leftUpdatedAt;
+  }
+
+  return right.executionLease.leaseId.localeCompare(left.executionLease.leaseId, "en");
 }
 
 function resolveRequestIp(request: IncomingMessage): string | null {
