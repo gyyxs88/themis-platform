@@ -72,6 +72,50 @@ test("initializePlatformSurface 默认进入节点与值班并支持切换 view"
   assert.equal(document.getElementById("platform-nav-governance").dataset.selected, "true");
 });
 
+test("initializePlatformSurface 会从 hash 恢复 view 并在切换时回写 hash", async () => {
+  const hashes = [];
+  const document = createDocumentStub();
+  const surface = initializePlatformSurface({
+    document,
+    locationHash: "#mailbox",
+    setLocationHash(hash) {
+      hashes.push(hash);
+    },
+    fetch: async (url) => {
+      if (url === "/api/web-auth/status") {
+        return createJsonResponse(200, { authenticated: false, tokenLabel: "" });
+      }
+
+      return createJsonResponse(200, {
+        nodes: [],
+        runs: [],
+        workItems: [],
+        items: [],
+        summary: {},
+        managerHotspots: [],
+        parents: [],
+      });
+    },
+    storage: {
+      getItem() {
+        return "principal-owner";
+      },
+      setItem() {},
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(document.getElementById("platform-view-mailbox").hidden, false);
+  assert.equal(document.getElementById("platform-nav-mailbox").dataset.selected, "true");
+
+  surface.setActiveView("overview");
+
+  assert.equal(document.getElementById("platform-view-overview").hidden, false);
+  assert.equal(document.getElementById("platform-view-mailbox").hidden, true);
+  assert.equal(hashes.at(-1), "#overview");
+});
+
 test("initializePlatformSurface 会对节点治理动作调用对应平台接口", async () => {
   const requests = [];
   const document = createDocumentStub();
