@@ -45,6 +45,13 @@ test("protected platform app 会拦截未登录 API，并允许 Web 口令登录
       },
     });
 
+    const loginPage = await fetch(`${baseUrl}/login`);
+    assert.equal(loginPage.status, 200);
+    const loginPageHtml = await loginPage.text();
+    assert.match(loginPageHtml, /<form id="platform-web-login-form">/);
+    assert.match(loginPageHtml, /type="password"/);
+    assert.match(loginPageHtml, /请输入平台 Web 访问口令/);
+
     const login = await fetch(`${baseUrl}/api/web-auth/login`, {
       method: "POST",
       headers: {

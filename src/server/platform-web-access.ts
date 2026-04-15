@@ -464,12 +464,168 @@ function createLoginPageHtml(appDisplayName: string): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${appDisplayName} 登录</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #f6f7fb;
+        color: #111827;
+      }
+
+      main {
+        width: min(100%, 420px);
+        box-sizing: border-box;
+        padding: 32px 24px;
+        border-radius: 18px;
+        background: #ffffff;
+        box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 32px;
+        line-height: 1.15;
+      }
+
+      p {
+        margin: 0 0 20px;
+        font-size: 16px;
+        line-height: 1.6;
+        color: #4b5563;
+      }
+
+      form {
+        display: grid;
+        gap: 12px;
+      }
+
+      label {
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 12px 14px;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        font-size: 16px;
+      }
+
+      button {
+        padding: 12px 14px;
+        border: 0;
+        border-radius: 10px;
+        background: #111827;
+        color: #ffffff;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      button[disabled] {
+        opacity: 0.7;
+        cursor: wait;
+      }
+
+      .status {
+        min-height: 24px;
+        margin-top: 12px;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .status[data-tone="error"] {
+        color: #b91c1c;
+      }
+
+      .status[data-tone="success"] {
+        color: #047857;
+      }
+    </style>
   </head>
   <body>
     <main>
       <h1>${appDisplayName} 登录</h1>
       <p>请通过平台 Web 访问口令登录。</p>
+      <form id="platform-web-login-form">
+        <label for="platform-web-token">访问口令</label>
+        <input
+          id="platform-web-token"
+          name="token"
+          type="password"
+          autocomplete="current-password"
+          placeholder="请输入平台 Web 访问口令"
+          required
+          autofocus
+        />
+        <button id="platform-web-submit" type="submit">登录</button>
+      </form>
+      <div id="platform-web-login-status" class="status" aria-live="polite"></div>
     </main>
+    <script>
+      const form = document.getElementById("platform-web-login-form");
+      const input = document.getElementById("platform-web-token");
+      const submit = document.getElementById("platform-web-submit");
+      const status = document.getElementById("platform-web-login-status");
+
+      const setStatus = (message, tone = "") => {
+        status.textContent = message;
+        if (tone) {
+          status.dataset.tone = tone;
+          return;
+        }
+
+        delete status.dataset.tone;
+      };
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const token = input.value.trim();
+
+        if (!token) {
+          setStatus("请输入访问口令。", "error");
+          input.focus();
+          return;
+        }
+
+        submit.disabled = true;
+        setStatus("正在登录...", "success");
+
+        try {
+          const response = await fetch("/api/web-auth/login", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ token }),
+          });
+          const payload = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            const message = payload?.error?.message || "登录失败，请稍后重试。";
+            setStatus(message, "error");
+            submit.disabled = false;
+            return;
+          }
+
+          setStatus("登录成功，正在进入平台...", "success");
+          window.location.assign("/");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "登录失败，请检查网络后重试。";
+          setStatus(message, "error");
+          submit.disabled = false;
+        }
+      });
+    </script>
   </body>
 </html>`;
 }
