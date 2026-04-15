@@ -29,6 +29,7 @@ export interface PlatformNodeService {
   drainNode(payload: PlatformNodeMutationPayload): ManagedAgentPlatformWorkerNodeMutationResult | null;
   offlineNode(payload: PlatformNodeMutationPayload): ManagedAgentPlatformWorkerNodeMutationResult | null;
   reclaimNode(payload: ManagedAgentPlatformNodeReclaimPayload): ManagedAgentPlatformWorkerNodeLeaseRecoveryResult | null;
+  deleteNode(payload: PlatformNodeMutationPayload): ManagedAgentPlatformWorkerNodeMutationResult | null;
 }
 
 export interface PlatformNodeMutationPayload extends ManagedAgentPlatformWorkerNodeDetailInput {
@@ -290,6 +291,40 @@ export function createInMemoryPlatformNodeService(
           }),
       };
     },
+
+    deleteNode(payload) {
+      const context = getNodeMutationContext(organizations, nodes, payload);
+
+      if (!context) {
+        return null;
+      }
+
+      const { organization, node } = context;
+
+      if (node.status !== "offline") {
+        throw new Error(`只允许删除离线节点：${node.nodeId}`);
+      }
+
+      const recentExecutionLeases = executionLeaseRuntime
+        ? executionLeaseRuntime.listNodeExecutionLeaseContexts({
+          ownerPrincipalId: payload.ownerPrincipalId,
+          organization,
+          node,
+        })
+        : [];
+      const leaseSummary = summarizeNodeExecutionLeases(recentExecutionLeases);
+
+      if (leaseSummary.totalCount > 0) {
+        throw new Error(`节点 ${node.nodeId} 仍有 lease 记录，不能直接删除。`);
+      }
+
+      nodes.delete(node.nodeId);
+
+      return {
+        organization,
+        node,
+      };
+    },
   };
 }
 
@@ -300,6 +335,34 @@ function mutateNodeStatus(
   status: ManagedAgentPlatformWorkerNodeRecord["status"],
   overrides: Partial<ManagedAgentPlatformWorkerNodeRecord> = {},
 ): ManagedAgentPlatformWorkerNodeMutationResult | null {
+  const context = getNodeMutationContext(organizations, nodes, payload);
+
+  if (!context) {
+    return null;
+  }
+  const { organization, node } = context;
+
+  const updatedNode: ManagedAgentPlatformWorkerNodeRecord = {
+    ...node,
+    status,
+    ...overrides,
+    updatedAt: node.updatedAt,
+  };
+  nodes.set(updatedNode.nodeId, updatedNode);
+  return {
+    organization,
+    node: updatedNode,
+  };
+}
+
+function getNodeMutationContext(
+  organizations: Map<string, ManagedAgentPlatformWorkerOrganizationRecord>,
+  nodes: Map<string, ManagedAgentPlatformWorkerNodeRecord>,
+  payload: PlatformNodeMutationPayload,
+): {
+  organization: ManagedAgentPlatformWorkerOrganizationRecord;
+  node: ManagedAgentPlatformWorkerNodeRecord;
+} | null {
   const node = nodes.get(payload.nodeId);
 
   if (!node) {
@@ -312,16 +375,9 @@ function mutateNodeStatus(
     return null;
   }
 
-  const updatedNode: ManagedAgentPlatformWorkerNodeRecord = {
-    ...node,
-    status,
-    ...overrides,
-    updatedAt: node.updatedAt,
-  };
-  nodes.set(updatedNode.nodeId, updatedNode);
   return {
     organization,
-    node: updatedNode,
+    node,
   };
 }
 

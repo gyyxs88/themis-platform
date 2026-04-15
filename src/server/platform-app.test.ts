@@ -576,6 +576,79 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     assert.equal(waitingLease?.workItem?.status, "waiting_human");
     assert.equal(waitingLease?.recoveryAction, "waiting_preserved");
 
+    const registerStale = await fetch(`${baseUrl}/api/platform/nodes/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        node: {
+          nodeId: "node-stale",
+          displayName: "Worker Stale",
+          slotCapacity: 1,
+          slotAvailable: 0,
+        },
+      }),
+    });
+    assert.equal(registerStale.status, 200);
+
+    const offlineStale = await fetch(`${baseUrl}/api/platform/nodes/offline`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-stale",
+      }),
+    });
+    assert.equal(offlineStale.status, 200);
+
+    const deleteOnline = await fetch(`${baseUrl}/api/platform/nodes/delete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-alpha",
+      }),
+    });
+    assert.equal(deleteOnline.status, 400);
+    const deleteOnlinePayload = await deleteOnline.json() as {
+      error?: { message?: string };
+    };
+    assert.match(deleteOnlinePayload.error?.message ?? "", /仍有 lease 记录/);
+
+    const deleteStale = await fetch(`${baseUrl}/api/platform/nodes/delete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-stale",
+      }),
+    });
+    assert.equal(deleteStale.status, 200);
+    const deleteStalePayload = await deleteStale.json() as {
+      node?: { nodeId?: string };
+    };
+    assert.equal(deleteStalePayload.node?.nodeId, "node-stale");
+
+    const staleDetail = await fetch(`${baseUrl}/api/platform/nodes/detail`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-stale",
+      }),
+    });
+    assert.equal(staleDetail.status, 404);
+
     const governanceOverview = await fetch(`${baseUrl}/api/platform/agents/governance-overview`, {
       method: "POST",
       headers: {

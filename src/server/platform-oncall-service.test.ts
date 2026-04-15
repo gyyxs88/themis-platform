@@ -70,6 +70,9 @@ test("PlatformOncallService 会汇总节点、waiting、runs 与 paused agents �
     reclaimNode() {
       throw new Error("not implemented");
     },
+    deleteNode() {
+      throw new Error("not implemented");
+    },
   };
   const governanceService: PlatformGovernanceService = {
     getGovernanceOverview() {

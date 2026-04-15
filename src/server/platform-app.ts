@@ -312,6 +312,19 @@ async function handlePlatformRequest(
       return writeJson(response, 200, result);
     }
 
+    if (method === "POST" && url.pathname === "/api/platform/nodes/delete") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformNodeDetailPayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.nodeService.deleteNode(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+      }
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
+    }
+
     if (method === "POST" && url.pathname === "/api/platform/agents/governance-overview") {
       const payload = await readAuthorizedPayload<ManagedAgentPlatformGovernanceFiltersPayload>(request, response);
       if (!payload) {

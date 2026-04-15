@@ -298,3 +298,140 @@ test("createInMemoryPlatformNodeService 接入 execution lease runtime 后会返
   assert.equal(reclaim?.summary.requeuedWorkItemCount, 1);
   assert.equal(reclaim?.reclaimedLeases[0]?.recoveryAction, "requeued");
 });
+
+test("createInMemoryPlatformNodeService 只允许删除离线且无 lease 记录的节点", () => {
+  const service = createInMemoryPlatformNodeService({
+    now: () => "2026-04-14T09:10:00.000Z",
+    generateNodeId: () => "node-runtime",
+    organizations: [{
+      organizationId: "org-platform",
+      ownerPrincipalId: "principal-platform-owner",
+      displayName: "Platform Team",
+      slug: "platform-team",
+      createdAt: "2026-04-14T09:00:00.000Z",
+      updatedAt: "2026-04-14T09:00:00.000Z",
+    }],
+  });
+
+  service.registerNode({
+    ownerPrincipalId: "principal-platform-owner",
+    node: {
+      nodeId: "node-stale",
+      displayName: "Worker Stale",
+      slotCapacity: 1,
+      slotAvailable: 0,
+    },
+  });
+  service.offlineNode({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-stale",
+  });
+
+  const deleted = service.deleteNode({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-stale",
+  });
+
+  assert.equal(deleted?.node.nodeId, "node-stale");
+  assert.equal(service.getNodeDetail({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-stale",
+  }), null);
+
+  service.registerNode({
+    ownerPrincipalId: "principal-platform-owner",
+    node: {
+      nodeId: "node-online",
+      displayName: "Worker Online",
+      slotCapacity: 1,
+      slotAvailable: 1,
+    },
+  });
+
+  assert.throws(() => {
+    service.deleteNode({
+      ownerPrincipalId: "principal-platform-owner",
+      nodeId: "node-online",
+    });
+  }, /只允许删除离线节点/);
+
+  service.registerNode({
+    ownerPrincipalId: "principal-platform-owner",
+    node: {
+      nodeId: "node-history",
+      displayName: "Worker History",
+      slotCapacity: 1,
+      slotAvailable: 0,
+    },
+  });
+  service.offlineNode({
+    ownerPrincipalId: "principal-platform-owner",
+    nodeId: "node-history",
+  });
+
+  service.connectExecutionLeaseRuntime({
+    listNodeExecutionLeaseContexts(input) {
+      if (input.node.nodeId !== "node-history") {
+        return [];
+      }
+
+      return [{
+        lease: {
+          leaseId: "lease-history",
+          runId: "run-history",
+          nodeId: "node-history",
+          workItemId: "work-item-history",
+          status: "released",
+          createdAt: "2026-04-14T09:01:00.000Z",
+          updatedAt: "2026-04-14T09:02:00.000Z",
+        },
+        run: {
+          runId: "run-history",
+          organizationId: "org-platform",
+          workItemId: "work-item-history",
+          nodeId: "node-history",
+          status: "completed",
+          createdAt: "2026-04-14T09:01:00.000Z",
+          updatedAt: "2026-04-14T09:02:00.000Z",
+        },
+        workItem: {
+          workItemId: "work-item-history",
+          organizationId: "org-platform",
+          targetAgentId: "agent-history",
+          sourceType: "human",
+          goal: "历史任务",
+          status: "completed",
+          priority: "normal",
+          createdAt: "2026-04-14T09:01:00.000Z",
+          updatedAt: "2026-04-14T09:02:00.000Z",
+        },
+        targetAgent: {
+          agentId: "agent-history",
+          organizationId: "org-platform",
+          displayName: "Agent History",
+          departmentRole: "Platform",
+          status: "active",
+          createdAt: "2026-04-14T09:01:00.000Z",
+          updatedAt: "2026-04-14T09:01:00.000Z",
+        },
+      }];
+    },
+    reclaimNodeExecutionLeases() {
+      return {
+        summary: {
+          activeLeaseCount: 0,
+          reclaimedRunCount: 0,
+          requeuedWorkItemCount: 0,
+        },
+        reclaimedLeases: [],
+      };
+    },
+  });
+
+  assert.throws(() => {
+    service.deleteNode({
+      ownerPrincipalId: "principal-platform-owner",
+      nodeId: "node-history",
+    });
+  }, /仍有 lease 记录/);
+});

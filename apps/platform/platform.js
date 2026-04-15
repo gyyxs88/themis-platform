@@ -805,7 +805,7 @@ export function initializePlatformSurface(options = {}) {
         ? `正在治理节点 ${state.actionNodeId}。`
         : state.actionMessage
           ? state.actionMessage
-          : "可直接在节点卡片上执行 drain / offline / reclaim。";
+          : "可直接在节点卡片上执行 drain / offline / reclaim / delete。";
     }
 
     if (dom.summaryTotal) {
@@ -1995,11 +1995,15 @@ export function initializePlatformSurface(options = {}) {
       }, `节点 ${action} 失败。`);
       const updatedNode = payload?.node;
 
-      if (updatedNode?.nodeId) {
+      if (action === "delete" && updatedNode?.nodeId) {
+        state.nodes = state.nodes.filter((node) => node?.nodeId !== updatedNode.nodeId);
+      } else if (updatedNode?.nodeId) {
         state.nodes = state.nodes.map((node) => node?.nodeId === updatedNode.nodeId ? updatedNode : node);
       }
 
-      state.nodeActionResult = buildNodeActionResult(action, normalizedNodeId, payload);
+      state.nodeActionResult = action === "delete"
+        ? null
+        : buildNodeActionResult(action, normalizedNodeId, payload);
 
       if (action === "reclaim") {
         const summary = summarizeReclaimResult(payload);
@@ -2009,13 +2013,35 @@ export function initializePlatformSurface(options = {}) {
           `reclaimedRun=${summary.reclaimedRunCount}`,
           `requeuedWorkItem=${summary.requeuedWorkItemCount}`,
         ].join(" | ");
+      } else if (action === "delete") {
+        state.actionMessage = `节点 ${normalizedNodeId} 已删除。`;
       } else if (updatedNode?.status) {
         state.actionMessage = `节点 ${normalizedNodeId} 已更新为 ${resolveNodeStatusLabel(updatedNode.status)}。`;
       } else {
         state.actionMessage = `节点 ${normalizedNodeId} 的 ${action} 已完成。`;
       }
 
-      if (state.selectedNodeId === normalizedNodeId) {
+      if (action === "delete" && state.selectedNodeId === normalizedNodeId) {
+        const visibleNodes = filterAndSortNodes(state.nodes, {
+          searchTerm: state.nodeSearchTerm,
+          statusFilter: state.nodeStatusFilter,
+          sortBy: state.nodeSortBy,
+        }, buildNodeAttentionById(state.oncallSummary));
+        state.selectedNodeId = typeof visibleNodes[0]?.nodeId === "string" ? visibleNodes[0].nodeId : "";
+        state.selectedNodeDetail = null;
+
+        if (state.selectedNodeId) {
+          try {
+            state.selectedNodeDetail = await requestPlatformJson(fetchFn, "/api/platform/nodes/detail", {
+              ownerPrincipalId: state.ownerPrincipalId,
+              nodeId: state.selectedNodeId,
+            }, "读取节点详情失败。");
+            state.loadErrorMessage = "";
+          } catch (error) {
+            state.loadErrorMessage = error instanceof Error ? error.message : "读取节点详情失败。";
+          }
+        }
+      } else if (state.selectedNodeId === normalizedNodeId) {
         try {
           state.selectedNodeDetail = await requestPlatformJson(fetchFn, "/api/platform/nodes/detail", {
             ownerPrincipalId: state.ownerPrincipalId,
@@ -2102,7 +2128,7 @@ export function initializePlatformSurface(options = {}) {
       const action = actionButton.getAttribute("data-platform-node-action");
       const nodeId = actionButton.getAttribute("data-platform-node-id");
 
-      if (action === "drain" || action === "offline" || action === "reclaim") {
+      if (action === "drain" || action === "offline" || action === "reclaim" || action === "delete") {
         void updateNodeStatus(nodeId, action);
       }
 
@@ -3085,6 +3111,7 @@ function resolveNodeActions(node) {
     case "offline":
       return [
         { id: "reclaim", label: "Reclaim" },
+        { id: "delete", label: "Delete" },
       ];
     default:
       return [];
@@ -3154,6 +3181,8 @@ function resolveNodeActionLabel(action) {
       return "Offline";
     case "reclaim":
       return "Reclaim";
+    case "delete":
+      return "Delete";
     default:
       return typeof action === "string" ? action : "治理动作";
   }

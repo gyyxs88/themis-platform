@@ -168,6 +168,131 @@ test("initializePlatformSurface 会对节点治理动作调用对应平台接口
   });
 });
 
+test("initializePlatformSurface 会支持删除离线历史节点", async () => {
+  const requests = [];
+  const document = createDocumentStub();
+  const surface = initializePlatformSurface({
+    document,
+    fetch: async (url, init = {}) => {
+      requests.push({
+        url,
+        method: init.method ?? "GET",
+        body: init.body ? JSON.parse(init.body) : null,
+      });
+
+      if (url === "/api/web-auth/status") {
+        return createJsonResponse(200, { authenticated: false, tokenLabel: "" });
+      }
+
+      if (url === "/api/platform/nodes/list") {
+        return createJsonResponse(200, {
+          nodes: [{
+            nodeId: "node-stale",
+            displayName: "Worker Stale",
+            organizationId: "org-platform",
+            status: "offline",
+            nodeIp: "192.168.31.8",
+            slotAvailable: 0,
+            slotCapacity: 1,
+            heartbeatTtlSeconds: 30,
+            lastHeartbeatAt: "2026-04-14T11:00:00.000Z",
+            labels: [],
+            workspaceCapabilities: ["/srv/platform-stale"],
+            credentialCapabilities: ["default"],
+            providerCapabilities: [],
+          }],
+        });
+      }
+
+      if (url === "/api/platform/nodes/detail") {
+        const payload = init.body ? JSON.parse(init.body) : {};
+
+        if (payload.nodeId === "node-stale") {
+          return createJsonResponse(200, {
+            node: {
+              nodeId: "node-stale",
+              displayName: "Worker Stale",
+              organizationId: "org-platform",
+              status: "offline",
+              nodeIp: "192.168.31.8",
+              slotAvailable: 0,
+              slotCapacity: 1,
+              heartbeatTtlSeconds: 30,
+              lastHeartbeatAt: "2026-04-14T11:00:00.000Z",
+              labels: [],
+              workspaceCapabilities: ["/srv/platform-stale"],
+              credentialCapabilities: ["default"],
+              providerCapabilities: [],
+            },
+            leaseSummary: {
+              totalCount: 0,
+              activeCount: 0,
+              expiredCount: 0,
+              releasedCount: 0,
+              revokedCount: 0,
+            },
+            activeExecutionLeases: [],
+            recentExecutionLeases: [],
+          });
+        }
+
+        return createJsonResponse(404, {
+          error: {
+            message: "missing node detail",
+          },
+        });
+      }
+
+      if (url === "/api/platform/nodes/delete") {
+        return createJsonResponse(200, {
+          node: {
+            nodeId: "node-stale",
+            status: "offline",
+            slotAvailable: 0,
+          },
+        });
+      }
+
+      return createJsonResponse(200, {
+        nodes: [],
+        runs: [],
+        workItems: [],
+        items: [],
+        summary: {},
+        managerHotspots: [],
+        parents: [],
+        organizations: [],
+        agents: [],
+        bindings: [],
+      });
+    },
+    storage: {
+      getItem() {
+        return "principal-owner";
+      },
+      setItem() {},
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.match(document.getElementById("platform-nodes-list").innerHTML, /Delete/);
+
+  requests.length = 0;
+  await surface.updateNodeStatus("node-stale", "delete");
+
+  assert.deepEqual(requests.at(-1), {
+    url: "/api/platform/nodes/delete",
+    method: "POST",
+    body: {
+      ownerPrincipalId: "principal-owner",
+      nodeId: "node-stale",
+    },
+  });
+  assert.equal(document.getElementById("platform-nodes-list").innerHTML, "");
+  assert.match(document.getElementById("platform-action-status").textContent, /已删除/);
+});
+
 test("initializePlatformSurface 会对 work-item 与 mailbox 动作调用对应平台接口", async () => {
   const requests = [];
   const document = createDocumentStub();
