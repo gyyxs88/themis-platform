@@ -14,19 +14,7 @@
     <div class="platform-shell platform-workbench">
       <aside id="platform-sidebar" class="platform-sidebar">
         <div class="platform-sidebar-brand">
-          <p class="platform-kicker">Control Plane</p>
           <h1>Themis Platform</h1>
-          <p class="platform-copy">
-            左侧按巡检场景切功能，右侧一次只显示一个工作区，先把节点、值班、治理和执行动作收成真正可用的平台工作台。
-          </p>
-        </div>
-
-        <div class="platform-session-card platform-session-card--sidebar">
-          <p class="platform-session-label">当前 Web 会话</p>
-          <strong id="platform-session-title">正在确认登录状态</strong>
-          <p id="platform-session-note" class="platform-session-note">
-            登录通过后，这里会显示当前平台访问口令标签。
-          </p>
         </div>
 
         <button id="platform-nav-toggle" type="button" class="platform-button subtle platform-nav-toggle">
@@ -42,16 +30,23 @@
           <button id="platform-nav-collaboration-runs" type="button" class="platform-nav-item">协作与 Runs</button>
           <button id="platform-nav-overview" type="button" class="platform-nav-item">平台概览</button>
         </nav>
-
-        <div class="platform-sidebar-status">
-          <p id="platform-owner-note" class="platform-inline-note">
-            如果你是从主 Themis 的兼容入口跳转过来的，这里通常会自动带上当前 ownerPrincipalId。
-          </p>
-          <button id="platform-refresh-button" type="button" class="platform-button subtle">刷新控制面</button>
-        </div>
       </aside>
 
       <main class="platform-workspace">
+        <section class="platform-panel platform-workspace-toolbar">
+          <div class="platform-workspace-toolbar-copy">
+            <p class="platform-panel-kicker">Session</p>
+            <strong id="platform-session-title">正在确认登录状态</strong>
+            <p id="platform-session-note" class="platform-inline-note">
+              登录通过后，这里会显示当前平台访问口令标签。
+            </p>
+            <p id="platform-owner-note" class="platform-inline-note">
+              如果你是从主 Themis 的兼容入口跳转过来的，这里通常会自动带上当前 ownerPrincipalId。
+            </p>
+          </div>
+          <button id="platform-refresh-button" type="button" class="platform-button subtle">刷新控制面</button>
+        </section>
+
         <section id="platform-view-nodes-oncall" class="platform-view">
           <article class="platform-panel platform-view-hero">
             <div class="platform-panel-head">

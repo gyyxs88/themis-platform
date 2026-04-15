@@ -12,13 +12,18 @@
   font-family: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
 }
 
+html {
+  height: 100%;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background:
     radial-gradient(circle at top left, rgba(35, 83, 71, 0.14), transparent 34%),
     linear-gradient(180deg, #f7f2ea 0%, var(--platform-bg) 100%);
@@ -33,27 +38,28 @@ textarea {
 }
 
 .platform-shell {
-  width: min(1180px, calc(100% - 32px));
-  margin: 0 auto;
-  padding: 40px 0 48px;
+  width: 100%;
+  height: 100vh;
+  padding: 20px 24px;
 }
 
 .platform-workbench {
-  width: min(1420px, calc(100% - 32px));
+  width: 100%;
+  height: 100%;
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .platform-sidebar {
-  position: sticky;
-  top: 20px;
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
-  gap: 18px;
-  min-height: calc(100vh - 80px);
-  padding: 24px;
+  grid-template-rows: auto auto 1fr;
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+  padding: 24px 18px;
   border: 1px solid rgba(244, 239, 231, 0.08);
   border-radius: 30px;
   background:
@@ -63,36 +69,10 @@ textarea {
   box-shadow: 0 28px 58px rgba(17, 24, 22, 0.28);
 }
 
-.platform-sidebar .platform-copy {
-  max-width: none;
-  margin-top: 14px;
-  color: rgba(247, 242, 234, 0.72);
-  font-size: 14px;
-  line-height: 1.7;
-}
-
-.platform-sidebar .platform-kicker,
-.platform-sidebar .platform-session-label,
-.platform-sidebar .platform-inline-note,
-.platform-sidebar .platform-session-note {
-  color: rgba(247, 242, 234, 0.66);
-}
-
 .platform-sidebar-brand h1 {
   margin: 0;
-  font-size: clamp(30px, 3vw, 44px);
-  line-height: 1.02;
-}
-
-.platform-session-card--sidebar {
-  padding: 20px 22px;
-  border-color: rgba(244, 239, 231, 0.08);
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: none;
-}
-
-.platform-session-card--sidebar strong {
-  color: #fff9f0;
+  font-size: clamp(28px, 2.8vw, 40px);
+  line-height: 1.06;
 }
 
 .platform-nav-toggle {
@@ -103,6 +83,7 @@ textarea {
 .platform-sidebar-nav {
   display: grid;
   gap: 10px;
+  align-content: start;
 }
 
 .platform-nav-item {
@@ -135,12 +116,6 @@ textarea {
   box-shadow: inset 0 0 0 1px rgba(244, 239, 231, 0.08);
 }
 
-.platform-sidebar-status {
-  display: grid;
-  gap: 12px;
-  align-self: end;
-}
-
 .platform-sidebar .platform-button.subtle {
   border-color: rgba(244, 239, 231, 0.14);
   background: rgba(255, 255, 255, 0.06);
@@ -150,11 +125,43 @@ textarea {
 .platform-workspace {
   display: grid;
   gap: 20px;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+}
+
+.platform-workspace-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.platform-workspace-toolbar-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.platform-workspace-toolbar strong {
+  display: block;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.platform-workspace-toolbar .platform-inline-note {
+  margin: 0;
 }
 
 .platform-view {
   display: grid;
   gap: 20px;
+  align-content: start;
 }
 
 .platform-view[hidden] {
@@ -643,12 +650,13 @@ textarea {
 
 @media (max-width: 960px) {
   .platform-workbench {
-    width: min(100% - 24px, 100%);
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .platform-sidebar {
     position: static;
+    height: auto;
     min-height: auto;
     grid-template-rows: auto auto auto;
   }
@@ -667,19 +675,23 @@ textarea {
     display: grid;
   }
 
-  .platform-sidebar-status {
-    align-self: stretch;
+  .platform-workspace {
+    padding-right: 0;
   }
 }
 
 @media (max-width: 640px) {
   .platform-shell {
-    width: min(100% - 24px, 100%);
-    padding: 24px 0 32px;
+    padding: 16px;
   }
 
   .platform-panel {
     padding: 18px;
+  }
+
+  .platform-workspace-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .platform-panel-head,

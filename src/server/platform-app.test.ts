@@ -376,7 +376,11 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
 
     const index = await fetch(`${baseUrl}/`);
     assert.equal(index.status, 200);
-    assert.match(await index.text(), /Themis Platform/);
+    const indexHtml = await index.text();
+    assert.match(indexHtml, /Themis Platform/);
+    assert.match(indexHtml, /<aside id="platform-sidebar" class="platform-sidebar">/);
+    assert.doesNotMatch(indexHtml, /platform-session-card--sidebar/);
+    assert.doesNotMatch(indexHtml, /platform-sidebar-status/);
 
     const script = await fetch(`${baseUrl}/platform.js`);
     assert.equal(script.status, 200);
@@ -384,7 +388,11 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
 
     const stylesheet = await fetch(`${baseUrl}/platform.css`);
     assert.equal(stylesheet.status, 200);
-    assert.match(await stylesheet.text(), /platform-shell/);
+    const stylesheetText = await stylesheet.text();
+    assert.match(stylesheetText, /body\s*\{[\s\S]*overflow:\s*hidden;/);
+    assert.match(stylesheetText, /\.platform-shell\s*\{[\s\S]*height:\s*100vh;/);
+    assert.match(stylesheetText, /\.platform-workbench\s*\{[\s\S]*overflow:\s*hidden;/);
+    assert.match(stylesheetText, /\.platform-workspace\s*\{[\s\S]*overflow-y:\s*auto;/);
 
     const health = await fetch(`${baseUrl}/api/health`);
     assert.equal(health.status, 200);
