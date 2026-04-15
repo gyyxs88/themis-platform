@@ -20,11 +20,14 @@ test("createInMemoryPlatformNodeService 会支持 register、heartbeat、list �
       providerCapabilities: ["gateway-a"],
       heartbeatTtlSeconds: 45,
     },
+  }, {
+    nodeIp: "192.168.31.208",
   });
 
   assert.equal(registered.organization.ownerPrincipalId, "principal-platform-owner");
   assert.equal(registered.node.nodeId, "node-fixed");
   assert.equal(registered.node.status, "online");
+  assert.equal(registered.node.nodeIp, "192.168.31.208");
   assert.deepEqual(registered.node.labels, ["linux", "build"]);
 
   const listed = service.listNodes({
@@ -44,9 +47,12 @@ test("createInMemoryPlatformNodeService 会支持 register、heartbeat、list �
       providerCapabilities: ["gateway-a", "gateway-b"],
       heartbeatTtlSeconds: 90,
     },
+  }, {
+    nodeIp: "192.168.31.209",
   });
 
   assert.equal(heartbeat?.node.status, "draining");
+  assert.equal(heartbeat?.node.nodeIp, "192.168.31.209");
   assert.equal(heartbeat?.node.slotAvailable, 1);
   assert.deepEqual(heartbeat?.node.labels, ["linux", "gpu"]);
   assert.deepEqual(heartbeat?.node.credentialCapabilities, ["default", "backup"]);

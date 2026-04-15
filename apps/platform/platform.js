@@ -2013,6 +2013,7 @@ function renderNodeCard(node) {
   const providerCapabilities = Array.isArray(node?.providerCapabilities) ? node.providerCapabilities : [];
   const metaChips = [
     `槽位 ${normalizeNumber(node?.slotAvailable, 0)}/${normalizeNumber(node?.slotCapacity, 0)}`,
+    node?.nodeIp ? `IP ${node.nodeIp}` : "",
     node?.heartbeatTtlSeconds ? `TTL ${normalizeNumber(node.heartbeatTtlSeconds, 0)}s` : "",
     node?.lastHeartbeatAt ? `最近心跳 ${formatTimestamp(node.lastHeartbeatAt)}` : "",
   ].filter(Boolean);

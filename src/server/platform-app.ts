@@ -224,7 +224,9 @@ async function handlePlatformRequest(
       if (!payload) {
         return;
       }
-      const result = options.nodeService.registerNode(payload);
+      const result = options.nodeService.registerNode(payload, {
+        nodeIp: resolveRequestIp(request),
+      });
       await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
@@ -234,7 +236,9 @@ async function handlePlatformRequest(
       if (!payload) {
         return;
       }
-      const result = options.nodeService.heartbeatNode(payload);
+      const result = options.nodeService.heartbeatNode(payload, {
+        nodeIp: resolveRequestIp(request),
+      });
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.node?.nodeId ?? "unknown"} not found.`));
       }
@@ -805,6 +809,94 @@ function resolveWorkspacePathForQueuedWorkItem(
 
 async function recordStateMutation(options: HandlePlatformRequestOptions): Promise<void> {
   await options.onStateMutation?.();
+}
+
+function resolveRequestIp(request: IncomingMessage): string | null {
+  const candidates = [
+    readForwardedIpHeader(request.headers["x-forwarded-for"]),
+    readForwardedHeader(request.headers.forwarded),
+    readForwardedIpHeader(request.headers["x-real-ip"]),
+    request.socket.remoteAddress,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeIp(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+function readForwardedIpHeader(value: string | string[] | undefined): string | null {
+  const normalized = normalizeHeaderValue(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const [firstIp = ""] = normalized.split(",");
+  return firstIp.trim() || null;
+}
+
+function readForwardedHeader(value: string | string[] | undefined): string | null {
+  const normalized = normalizeHeaderValue(value);
+  if (!normalized) {
+    return null;
+  }
+
+  for (const segment of normalized.split(/[;,]/)) {
+    const trimmed = segment.trim();
+    if (!trimmed.toLowerCase().startsWith("for=")) {
+      continue;
+    }
+
+    return trimmed.slice(4).trim() || null;
+  }
+
+  return null;
+}
+
+function normalizeHeaderValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value.map((item) => item.trim()).filter(Boolean).join(",");
+  }
+
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeIp(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  let normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.startsWith("\"") && normalized.endsWith("\"")) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+
+  if (normalized.toLowerCase() === "unknown") {
+    return null;
+  }
+
+  if (normalized.startsWith("[")) {
+    const endBracket = normalized.indexOf("]");
+    if (endBracket > 0) {
+      normalized = normalized.slice(1, endBracket);
+    }
+  } else if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(normalized)) {
+    normalized = normalized.replace(/:\d+$/, "");
+  }
+
+  if (normalized.startsWith("::ffff:")) {
+    normalized = normalized.slice(7);
+  }
+
+  return normalized || null;
 }
 
 function buildNotFoundErrorResponse(message: string): { error: { code: "NOT_FOUND"; message: string } } {

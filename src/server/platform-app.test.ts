@@ -415,6 +415,7 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-Forwarded-For": "192.168.31.208, 10.0.0.5",
       },
       body: JSON.stringify({
         ownerPrincipalId: "principal-platform-owner",
@@ -431,12 +432,13 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     });
     assert.equal(register.status, 200);
     const registerPayload = await register.json() as {
-      node?: { nodeId?: string; labels?: string[]; status?: string };
+      node?: { nodeId?: string; labels?: string[]; status?: string; nodeIp?: string | null };
       organization?: { ownerPrincipalId?: string };
     };
     assert.equal(registerPayload.organization?.ownerPrincipalId, "principal-platform-owner");
     assert.equal(registerPayload.node?.nodeId, "node-alpha");
     assert.equal(registerPayload.node?.status, "online");
+    assert.equal(registerPayload.node?.nodeIp, "192.168.31.208");
     assert.deepEqual(registerPayload.node?.labels, ["linux", "build"]);
 
     const list = await fetch(`${baseUrl}/api/platform/nodes/list`, {
@@ -450,11 +452,12 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     });
     assert.equal(list.status, 200);
     const listPayload = await list.json() as {
-      nodes?: Array<{ nodeId?: string; displayName?: string }>;
+      nodes?: Array<{ nodeId?: string; displayName?: string; nodeIp?: string | null }>;
     };
     assert.equal(listPayload.nodes?.length, 1);
     assert.equal(listPayload.nodes?.[0]?.nodeId, "node-alpha");
     assert.equal(listPayload.nodes?.[0]?.displayName, "Worker Alpha");
+    assert.equal(listPayload.nodes?.[0]?.nodeIp, "192.168.31.208");
 
     const detail = await fetch(`${baseUrl}/api/platform/nodes/detail`, {
       method: "POST",
@@ -468,11 +471,12 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     });
     assert.equal(detail.status, 200);
     const detailPayload = await detail.json() as {
-      node?: { nodeId?: string };
+      node?: { nodeId?: string; nodeIp?: string | null };
       leaseSummary?: { totalCount?: number; activeCount?: number; revokedCount?: number };
       activeExecutionLeases?: Array<unknown>;
     };
     assert.equal(detailPayload.node?.nodeId, "node-alpha");
+    assert.equal(detailPayload.node?.nodeIp, "192.168.31.208");
     assert.deepEqual(detailPayload.leaseSummary, {
       totalCount: 0,
       activeCount: 0,
@@ -486,6 +490,7 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-Forwarded-For": "192.168.31.209",
       },
       body: JSON.stringify({
         ownerPrincipalId: "principal-platform-owner",
@@ -498,10 +503,11 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     });
     assert.equal(heartbeat.status, 200);
     const heartbeatPayload = await heartbeat.json() as {
-      node?: { status?: string; slotAvailable?: number };
+      node?: { status?: string; slotAvailable?: number; nodeIp?: string | null };
     };
     assert.equal(heartbeatPayload.node?.status, "draining");
     assert.equal(heartbeatPayload.node?.slotAvailable, 0);
+    assert.equal(heartbeatPayload.node?.nodeIp, "192.168.31.209");
 
     const drain = await fetch(`${baseUrl}/api/platform/nodes/drain`, {
       method: "POST",

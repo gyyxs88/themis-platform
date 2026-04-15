@@ -13,8 +13,14 @@ import type {
 } from "themis-contracts/managed-agent-platform-worker";
 
 export interface PlatformNodeService {
-  registerNode(payload: ManagedAgentPlatformNodeRegisterPayload): ManagedAgentPlatformWorkerNodeMutationResult;
-  heartbeatNode(payload: ManagedAgentPlatformNodeHeartbeatPayload): ManagedAgentPlatformWorkerNodeMutationResult | null;
+  registerNode(
+    payload: ManagedAgentPlatformNodeRegisterPayload,
+    context?: PlatformNodeRequestContext,
+  ): ManagedAgentPlatformWorkerNodeMutationResult;
+  heartbeatNode(
+    payload: ManagedAgentPlatformNodeHeartbeatPayload,
+    context?: PlatformNodeRequestContext,
+  ): ManagedAgentPlatformWorkerNodeMutationResult | null;
   listNodes(payload: ManagedAgentPlatformNodeListPayload): ManagedAgentPlatformWorkerNodeRecord[];
   getNodeDetail(payload: ManagedAgentPlatformNodeDetailPayload): ManagedAgentPlatformWorkerNodeDetailResult | null;
   drainNode(payload: PlatformNodeMutationPayload): ManagedAgentPlatformWorkerNodeMutationResult | null;
@@ -24,6 +30,10 @@ export interface PlatformNodeService {
 
 export interface PlatformNodeMutationPayload extends ManagedAgentPlatformWorkerNodeDetailInput {
   ownerPrincipalId: string;
+}
+
+export interface PlatformNodeRequestContext {
+  nodeIp?: string | null;
 }
 
 export interface PlatformNodeServiceSnapshot {
@@ -90,7 +100,7 @@ export function createInMemoryPlatformNodeService(
 
     replaceSnapshot,
 
-    registerNode(payload) {
+    registerNode(payload, context = {}) {
       const timestamp = now();
       const organization = getOrCreateOrganization(organizations, payload.ownerPrincipalId, payload.node.organizationId, timestamp);
       const nodeId = normalizeText(payload.node.nodeId) || generateNodeId();
@@ -100,6 +110,7 @@ export function createInMemoryPlatformNodeService(
         organizationId: organization.organizationId,
         displayName: normalizeText(payload.node.displayName) || existingNode?.displayName || nodeId,
         status: "online",
+        nodeIp: normalizeOptionalIp(context.nodeIp) ?? existingNode?.nodeIp ?? null,
         slotCapacity: normalizePositiveInteger(payload.node.slotCapacity, 1),
         slotAvailable: normalizeSlotAvailable(payload.node.slotAvailable, payload.node.slotCapacity),
         labels: normalizeUniqueStrings(payload.node.labels),
@@ -118,7 +129,7 @@ export function createInMemoryPlatformNodeService(
       };
     },
 
-    heartbeatNode(payload) {
+    heartbeatNode(payload, context = {}) {
       const existingNode = nodes.get(payload.node.nodeId);
 
       if (!existingNode) {
@@ -135,6 +146,7 @@ export function createInMemoryPlatformNodeService(
       const record: ManagedAgentPlatformWorkerNodeRecord = {
         ...existingNode,
         status: payload.node.status ?? existingNode.status,
+        nodeIp: normalizeOptionalIp(context.nodeIp) ?? existingNode.nodeIp ?? null,
         slotAvailable: payload.node.slotAvailable == null
           ? existingNode.slotAvailable
           : normalizeSlotAvailable(payload.node.slotAvailable, existingNode.slotCapacity),
@@ -323,6 +335,11 @@ function normalizeUniqueStrings(values: string[] | undefined): string[] | undefi
 
   const unique = Array.from(new Set(values.map((value) => normalizeText(value)).filter(Boolean)));
   return unique.length > 0 ? unique : [];
+}
+
+function normalizeOptionalIp(value: string | null | undefined): string | null {
+  const normalized = normalizeText(value ?? undefined);
+  return normalized || null;
 }
 
 function normalizeSlotAvailable(value: number | undefined, slotCapacity: number | undefined): number {

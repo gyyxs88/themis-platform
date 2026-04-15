@@ -500,7 +500,7 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
       if (url === "/api/platform/nodes/list") {
         return createJsonResponse(200, {
           nodes: [
-            { nodeId: "node-a", status: "online" },
+            { nodeId: "node-a", status: "online", nodeIp: "192.168.31.208" },
             { nodeId: "node-b", status: "draining" },
           ],
         });
@@ -808,6 +808,7 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
 
   assert.equal(document.getElementById("platform-session-title").textContent, "已登录：platform-web");
   assert.equal(document.getElementById("platform-summary-total").textContent, "2");
+  assert.match(document.getElementById("platform-nodes-list").innerHTML, /IP 192\.168\.31\.208/);
   assert.equal(document.getElementById("platform-oncall-errors").textContent, "1");
   assert.equal(document.getElementById("platform-oncall-warnings").textContent, "1");
   assert.equal(document.getElementById("platform-oncall-waiting").textContent, "1");
