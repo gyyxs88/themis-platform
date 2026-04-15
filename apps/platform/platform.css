@@ -391,6 +391,13 @@ textarea {
   margin-top: 18px;
 }
 
+.platform-node-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 0.85fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
 .platform-split-grid--nodes {
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
 }
@@ -523,6 +530,10 @@ textarea {
   gap: 10px;
 }
 
+.platform-node-detail-list + .platform-node-detail-list {
+  margin-top: 10px;
+}
+
 .platform-node-detail-item {
   display: grid;
   gap: 8px;
@@ -569,6 +580,13 @@ textarea {
   border-radius: 10px;
   background: rgba(23, 25, 21, 0.06);
   font-size: 12px;
+}
+
+.platform-node-action-result {
+  border-style: dashed;
+  background:
+    radial-gradient(circle at top right, rgba(35, 83, 71, 0.08), transparent 32%),
+    rgba(255, 255, 255, 0.72);
 }
 
 .platform-diagnosis-card,
@@ -770,7 +788,8 @@ textarea {
   }
 
   .platform-split-grid--nodes,
-  .platform-node-detail-grid {
+  .platform-node-detail-grid,
+  .platform-node-controls {
     grid-template-columns: 1fr;
   }
 

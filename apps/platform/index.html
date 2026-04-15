@@ -94,6 +94,35 @@
                 <p id="platform-action-status" class="platform-inline-note">
                   可直接在节点卡片上执行 drain / offline / reclaim。
                 </p>
+                <div class="platform-node-controls">
+                  <label class="platform-field">
+                    <span>搜索节点</span>
+                    <input
+                      id="platform-node-search-input"
+                      type="search"
+                      placeholder="名称 / nodeId / IP"
+                      autocomplete="off"
+                    />
+                  </label>
+                  <label class="platform-field">
+                    <span>筛选状态</span>
+                    <select id="platform-node-status-filter">
+                      <option value="all">全部节点</option>
+                      <option value="attention">仅值班关注</option>
+                      <option value="online">仅在线</option>
+                      <option value="draining">仅排水中</option>
+                      <option value="offline">仅离线</option>
+                    </select>
+                  </label>
+                  <label class="platform-field">
+                    <span>排序方式</span>
+                    <select id="platform-node-sort-select">
+                      <option value="attention">值班优先</option>
+                      <option value="displayName">按名称</option>
+                      <option value="nodeId">按 nodeId</option>
+                    </select>
+                  </label>
+                </div>
                 <p id="platform-nodes-empty" class="platform-empty-state">
                   先填写 ownerPrincipalId，再从平台控制面读取节点列表。
                 </p>

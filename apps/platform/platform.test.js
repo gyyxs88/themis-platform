@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildNodeAttentionById,
+  filterAndSortNodes,
   initializePlatformSurface,
   resolveInitialOwnerPrincipalId,
   summarizeNodes,
@@ -966,6 +968,335 @@ test("summarizeReclaimResult 会归一化 reclaim summary", () => {
   });
 });
 
+test("buildNodeAttentionById 与 filterAndSortNodes 会按值班关注度筛选并排序节点", () => {
+  const nodes = [
+    {
+      nodeId: "node-zeta",
+      displayName: "Worker Zeta",
+      status: "online",
+      nodeIp: "192.168.31.210",
+    },
+    {
+      nodeId: "node-beta",
+      displayName: "Worker Beta",
+      status: "draining",
+      nodeIp: "192.168.31.208",
+    },
+    {
+      nodeId: "node-alpha",
+      displayName: "Worker Alpha",
+      status: "offline",
+      nodeIp: "192.168.31.207",
+    },
+  ];
+  const attentionByNodeId = buildNodeAttentionById({
+    recommendations: [
+      {
+        category: "worker_fleet",
+        severity: "warning",
+        title: "Worker Beta 需要值班处理",
+        subjectId: "node-beta",
+      },
+      {
+        category: "worker_fleet",
+        severity: "error",
+        title: "Worker Alpha 已离线且有风险",
+        subjectId: "node-alpha",
+      },
+    ],
+  });
+
+  assert.deepEqual(filterAndSortNodes(nodes, {
+    statusFilter: "attention",
+    sortBy: "attention",
+  }, attentionByNodeId).map((node) => node.nodeId), ["node-alpha", "node-beta"]);
+
+  assert.deepEqual(filterAndSortNodes(nodes, {
+    searchTerm: "192.168.31.210",
+    statusFilter: "all",
+    sortBy: "displayName",
+  }, attentionByNodeId).map((node) => node.nodeId), ["node-zeta"]);
+
+  assert.deepEqual(filterAndSortNodes(nodes, {
+    statusFilter: "all",
+    sortBy: "nodeId",
+  }, attentionByNodeId).map((node) => node.nodeId), ["node-alpha", "node-beta", "node-zeta"]);
+});
+
+test("initializePlatformSurface 支持节点 attention 筛选排序，并在详情区展开 reclaim 结果", async () => {
+  const document = createDocumentStub();
+  let detailMode = "before";
+  const surface = initializePlatformSurface({
+    document,
+    fetch: async (url, init = {}) => {
+      if (url === "/api/web-auth/status") {
+        return createJsonResponse(200, { authenticated: true, tokenLabel: "platform-web" });
+      }
+
+      if (url === "/api/platform/nodes/list") {
+        return createJsonResponse(200, {
+          nodes: [
+            {
+              nodeId: "node-zeta",
+              displayName: "Worker Zeta",
+              organizationId: "org-platform",
+              status: "online",
+              nodeIp: "192.168.31.210",
+              slotAvailable: 1,
+              slotCapacity: 2,
+              heartbeatTtlSeconds: 90,
+              lastHeartbeatAt: "2026-04-14T11:59:40.000Z",
+              labels: [],
+              workspaceCapabilities: [],
+              credentialCapabilities: [],
+              providerCapabilities: [],
+            },
+            {
+              nodeId: "node-beta",
+              displayName: "Worker Beta",
+              organizationId: "org-platform",
+              status: "draining",
+              nodeIp: "192.168.31.208",
+              slotAvailable: 0,
+              slotCapacity: 2,
+              heartbeatTtlSeconds: 90,
+              lastHeartbeatAt: "2026-04-14T11:59:50.000Z",
+              labels: ["beta"],
+              workspaceCapabilities: ["/srv/platform-beta"],
+              credentialCapabilities: ["cred-beta"],
+              providerCapabilities: ["provider-beta"],
+            },
+          ],
+        });
+      }
+
+      if (url === "/api/platform/nodes/detail") {
+        const payload = init.body ? JSON.parse(init.body) : {};
+
+        if (payload.nodeId === "node-beta") {
+          return createJsonResponse(200, detailMode === "before"
+            ? {
+                node: {
+                  nodeId: "node-beta",
+                  displayName: "Worker Beta",
+                  organizationId: "org-platform",
+                  status: "draining",
+                  nodeIp: "192.168.31.208",
+                  slotAvailable: 0,
+                  slotCapacity: 2,
+                  heartbeatTtlSeconds: 90,
+                  lastHeartbeatAt: "2026-04-14T11:59:50.000Z",
+                  labels: ["beta"],
+                  workspaceCapabilities: ["/srv/platform-beta"],
+                  credentialCapabilities: ["cred-beta"],
+                  providerCapabilities: ["provider-beta"],
+                },
+                leaseSummary: {
+                  totalCount: 1,
+                  activeCount: 1,
+                  releasedCount: 0,
+                  revokedCount: 0,
+                  expiredCount: 0,
+                },
+                activeExecutionLeases: [{
+                  lease: {
+                    leaseId: "lease-beta-1",
+                    runId: "run-beta-1",
+                    nodeId: "node-beta",
+                    workItemId: "work-item-beta-1",
+                    status: "active",
+                    updatedAt: "2026-04-14T11:59:50.000Z",
+                  },
+                  run: {
+                    runId: "run-beta-1",
+                    status: "running",
+                  },
+                  workItem: {
+                    workItemId: "work-item-beta-1",
+                    goal: "恢复节点 B 的运行任务",
+                    status: "running",
+                  },
+                  targetAgent: {
+                    agentId: "agent-beta",
+                    displayName: "Agent Beta",
+                  },
+                }],
+                recentExecutionLeases: [],
+              }
+            : {
+                node: {
+                  nodeId: "node-beta",
+                  displayName: "Worker Beta",
+                  organizationId: "org-platform",
+                  status: "offline",
+                  nodeIp: "192.168.31.208",
+                  slotAvailable: 0,
+                  slotCapacity: 2,
+                  heartbeatTtlSeconds: 90,
+                  lastHeartbeatAt: "2026-04-14T11:59:50.000Z",
+                  labels: ["beta"],
+                  workspaceCapabilities: ["/srv/platform-beta"],
+                  credentialCapabilities: ["cred-beta"],
+                  providerCapabilities: ["provider-beta"],
+                },
+                leaseSummary: {
+                  totalCount: 1,
+                  activeCount: 0,
+                  releasedCount: 0,
+                  revokedCount: 1,
+                  expiredCount: 0,
+                },
+                activeExecutionLeases: [],
+                recentExecutionLeases: [{
+                  lease: {
+                    leaseId: "lease-beta-1",
+                    runId: "run-beta-1",
+                    nodeId: "node-beta",
+                    workItemId: "work-item-beta-1",
+                    status: "revoked",
+                    updatedAt: "2026-04-14T12:02:00.000Z",
+                  },
+                  run: {
+                    runId: "run-beta-1",
+                    status: "interrupted",
+                  },
+                  workItem: {
+                    workItemId: "work-item-beta-1",
+                    goal: "恢复节点 B 的运行任务",
+                    status: "queued",
+                  },
+                  targetAgent: {
+                    agentId: "agent-beta",
+                    displayName: "Agent Beta",
+                  },
+                }],
+              });
+        }
+
+        return createJsonResponse(404, { error: { message: "missing node detail" } });
+      }
+
+      if (url === "/api/platform/nodes/reclaim") {
+        detailMode = "after";
+        return createJsonResponse(200, {
+          node: {
+            nodeId: "node-beta",
+            displayName: "Worker Beta",
+            organizationId: "org-platform",
+            status: "offline",
+            nodeIp: "192.168.31.208",
+            slotAvailable: 0,
+            slotCapacity: 2,
+          },
+          summary: {
+            activeLeaseCount: 1,
+            reclaimedRunCount: 1,
+            requeuedWorkItemCount: 1,
+          },
+          reclaimedLeases: [{
+            lease: {
+              leaseId: "lease-beta-1",
+              runId: "run-beta-1",
+              nodeId: "node-beta",
+              workItemId: "work-item-beta-1",
+              status: "revoked",
+              updatedAt: "2026-04-14T12:02:00.000Z",
+            },
+            run: {
+              runId: "run-beta-1",
+              status: "interrupted",
+            },
+            workItem: {
+              workItemId: "work-item-beta-1",
+              goal: "恢复节点 B 的运行任务",
+              status: "queued",
+            },
+            targetAgent: {
+              agentId: "agent-beta",
+              displayName: "Agent Beta",
+            },
+            recoveryAction: "requeued",
+          }],
+        });
+      }
+
+      if (url === "/api/platform/oncall/summary") {
+        return createJsonResponse(200, {
+          counts: {
+            nodeTotal: 2,
+            nodeErrorCount: 0,
+            nodeWarningCount: 1,
+            waitingAttentionCount: 0,
+            waitingHumanCount: 0,
+            runWaitingActionCount: 0,
+            runFailedCount: 0,
+            pausedAgentCount: 0,
+          },
+          primaryDiagnosis: {
+            id: "oncall-node-beta-warning",
+            severity: "warning",
+            title: "Worker Beta 需要值班处理",
+            summary: "节点正在 draining，仍有任务在跑。",
+          },
+          recommendedNextSteps: [],
+          recommendations: [{
+            recommendationId: "node:node-beta:draining_active_lease",
+            category: "worker_fleet",
+            severity: "warning",
+            title: "Worker Beta 需要值班处理",
+            summary: "节点正在 draining，仍有任务在跑。",
+            recommendedAction: "继续观察 active lease 是否自然清空。",
+            subjectId: "node-beta",
+          }],
+        });
+      }
+
+      return createJsonResponse(200, {
+        runs: [],
+        workItems: [],
+        items: [],
+        summary: {},
+        managerHotspots: [],
+        parents: [],
+        organizations: [],
+        agents: [],
+        bindings: [],
+      });
+    },
+    storage: {
+      getItem() {
+        return "principal-owner";
+      },
+      setItem() {},
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.ok(
+    document.getElementById("platform-nodes-list").innerHTML.indexOf("Worker Beta")
+      < document.getElementById("platform-nodes-list").innerHTML.indexOf("Worker Zeta"),
+  );
+
+  await surface.setNodeListControls({
+    statusFilter: "attention",
+    sortBy: "attention",
+    searchTerm: "",
+  });
+
+  assert.match(document.getElementById("platform-nodes-status").textContent, /1 \/ 2/);
+  assert.match(document.getElementById("platform-nodes-list").innerHTML, /Worker Beta/);
+  assert.doesNotMatch(document.getElementById("platform-nodes-list").innerHTML, /Worker Zeta/);
+
+  await surface.updateNodeStatus("node-beta", "reclaim");
+
+  assert.match(document.getElementById("platform-action-status").textContent, /reclaim 完成/);
+  assert.match(document.getElementById("platform-node-detail").innerHTML, /最近治理结果/);
+  assert.match(document.getElementById("platform-node-detail").innerHTML, /恢复节点 B 的运行任务/);
+  assert.match(document.getElementById("platform-node-detail").innerHTML, /run-beta-1/);
+  assert.match(document.getElementById("platform-node-detail").innerHTML, /已重新排队/);
+});
+
 function createJsonResponse(status, payload) {
   return {
     ok: status >= 200 && status < 300,
@@ -1039,6 +1370,9 @@ function createDocumentStub() {
     "platform-refresh-button",
     "platform-nodes-status",
     "platform-action-status",
+    "platform-node-search-input",
+    "platform-node-status-filter",
+    "platform-node-sort-select",
     "platform-nodes-empty",
     "platform-nodes-list",
     "platform-node-detail-status",

@@ -15,6 +15,8 @@ const EMPTY_WORK_ITEM_SUMMARY = {
 };
 
 const DEFAULT_ACTIVE_VIEW = "nodes-oncall";
+const DEFAULT_NODE_STATUS_FILTER = "all";
+const DEFAULT_NODE_SORT_BY = "attention";
 const PLATFORM_VIEWS = [
   "nodes-oncall",
   "governance",
@@ -99,6 +101,79 @@ export function summarizeReclaimResult(result) {
   };
 }
 
+export function buildNodeAttentionById(oncallSummary) {
+  const recommendations = Array.isArray(oncallSummary?.recommendations)
+    ? oncallSummary.recommendations
+    : [];
+  const attentionByNodeId = {};
+
+  for (const recommendation of recommendations) {
+    if (recommendation?.category !== "worker_fleet") {
+      continue;
+    }
+
+    const nodeId = normalizeOwnerPrincipalId(recommendation?.subjectId);
+
+    if (!nodeId) {
+      continue;
+    }
+
+    const severity = resolveOncallSeverity(recommendation?.severity);
+    const current = attentionByNodeId[nodeId] ?? {
+      severity: "info",
+      recommendationCount: 0,
+      titles: [],
+    };
+
+    attentionByNodeId[nodeId] = {
+      severity: rankAttentionSeverity(severity) > rankAttentionSeverity(current.severity)
+        ? severity
+        : current.severity,
+      recommendationCount: current.recommendationCount + 1,
+      titles: recommendation?.title
+        ? [...current.titles, recommendation.title]
+        : current.titles,
+    };
+  }
+
+  return attentionByNodeId;
+}
+
+export function filterAndSortNodes(nodes, options = {}, attentionByNodeId = {}) {
+  const statusFilter = normalizeNodeStatusFilter(options?.statusFilter);
+  const sortBy = normalizeNodeSortBy(options?.sortBy);
+  const searchTerm = normalizeNodeSearchTerm(options?.searchTerm);
+  const searchNeedle = searchTerm.toLowerCase();
+
+  return (Array.isArray(nodes) ? nodes : [])
+    .filter((node) => {
+      const normalizedNodeStatus = normalizeNodeStatus(node?.status);
+
+      if (statusFilter === "attention" && !attentionByNodeId[node?.nodeId ?? ""]) {
+        return false;
+      }
+
+      if (statusFilter !== "all" && statusFilter !== "attention" && normalizedNodeStatus !== statusFilter) {
+        return false;
+      }
+
+      if (!searchNeedle) {
+        return true;
+      }
+
+      const searchHaystack = [
+        node?.displayName,
+        node?.nodeId,
+        node?.nodeIp,
+        node?.organizationId,
+      ].filter(Boolean).join(" ").toLowerCase();
+
+      return searchHaystack.includes(searchNeedle);
+    })
+    .slice()
+    .sort((left, right) => compareNodesBySort(left, right, sortBy, attentionByNodeId));
+}
+
 function normalizePlatformView(value) {
   return PLATFORM_VIEWS.includes(value) ? value : "";
 }
@@ -180,6 +255,9 @@ export function initializePlatformSurface(options = {}) {
     refreshButton: documentRef.getElementById("platform-refresh-button"),
     nodesStatus: documentRef.getElementById("platform-nodes-status"),
     actionStatus: documentRef.getElementById("platform-action-status"),
+    nodeSearchInput: documentRef.getElementById("platform-node-search-input"),
+    nodeStatusFilter: documentRef.getElementById("platform-node-status-filter"),
+    nodeSortSelect: documentRef.getElementById("platform-node-sort-select"),
     nodesEmpty: documentRef.getElementById("platform-nodes-empty"),
     nodesList: documentRef.getElementById("platform-nodes-list"),
     nodeDetailStatus: documentRef.getElementById("platform-node-detail-status"),
@@ -294,9 +372,13 @@ export function initializePlatformSurface(options = {}) {
       locationSearch,
       storage?.getItem?.(OWNER_PRINCIPAL_STORAGE_KEY) ?? "",
     ),
+    nodeSearchTerm: "",
+    nodeStatusFilter: DEFAULT_NODE_STATUS_FILTER,
+    nodeSortBy: DEFAULT_NODE_SORT_BY,
     nodes: [],
     selectedNodeId: "",
     selectedNodeDetail: null,
+    nodeActionResult: null,
     oncallSummary: createEmptyOncallSummary(),
     governanceOverview: {
       summary: { ...EMPTY_GOVERNANCE_SUMMARY },
@@ -336,6 +418,18 @@ export function initializePlatformSurface(options = {}) {
     dom.ownerInput.value = state.ownerPrincipalId;
   }
 
+  if (dom.nodeSearchInput) {
+    dom.nodeSearchInput.value = state.nodeSearchTerm;
+  }
+
+  if (dom.nodeStatusFilter && !dom.nodeStatusFilter.value) {
+    dom.nodeStatusFilter.value = state.nodeStatusFilter;
+  }
+
+  if (dom.nodeSortSelect && !dom.nodeSortSelect.value) {
+    dom.nodeSortSelect.value = state.nodeSortBy;
+  }
+
   if (dom.dispatchSourceSelect && !dom.dispatchSourceSelect.value) {
     dom.dispatchSourceSelect.value = "human";
   }
@@ -369,6 +463,72 @@ export function initializePlatformSurface(options = {}) {
     render();
   }
 
+  const getNodeAttentionById = () => buildNodeAttentionById(state.oncallSummary);
+
+  const getVisibleNodes = () => filterAndSortNodes(state.nodes, {
+    searchTerm: state.nodeSearchTerm,
+    statusFilter: state.nodeStatusFilter,
+    sortBy: state.nodeSortBy,
+  }, getNodeAttentionById());
+
+  const syncSelectedNodeWithVisibleNodes = async () => {
+    const visibleNodes = getVisibleNodes();
+    const previousSelectedNodeId = state.selectedNodeId;
+
+    if (!visibleNodes.some((node) => node?.nodeId === state.selectedNodeId)) {
+      state.selectedNodeId = typeof visibleNodes[0]?.nodeId === "string"
+        ? visibleNodes[0].nodeId
+        : "";
+      state.selectedNodeDetail = null;
+    }
+
+    if (!state.selectedNodeId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      render();
+      return;
+    }
+
+    if (
+      previousSelectedNodeId === state.selectedNodeId
+      && state.selectedNodeDetail?.node?.nodeId === state.selectedNodeId
+    ) {
+      render();
+      return;
+    }
+
+    try {
+      state.selectedNodeDetail = await requestPlatformJson(fetchFn, "/api/platform/nodes/detail", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        nodeId: state.selectedNodeId,
+      }, "读取节点详情失败。");
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.selectedNodeDetail = null;
+      state.loadErrorMessage = error instanceof Error ? error.message : "读取节点详情失败。";
+    } finally {
+      render();
+    }
+  };
+
+  const setNodeListControls = async (nextControls = {}) => {
+    state.nodeSearchTerm = normalizeNodeSearchTerm(nextControls.searchTerm ?? state.nodeSearchTerm);
+    state.nodeStatusFilter = normalizeNodeStatusFilter(nextControls.statusFilter ?? state.nodeStatusFilter);
+    state.nodeSortBy = normalizeNodeSortBy(nextControls.sortBy ?? state.nodeSortBy);
+
+    if (dom.nodeSearchInput && dom.nodeSearchInput.value !== state.nodeSearchTerm) {
+      dom.nodeSearchInput.value = state.nodeSearchTerm;
+    }
+
+    if (dom.nodeStatusFilter && dom.nodeStatusFilter.value !== state.nodeStatusFilter) {
+      dom.nodeStatusFilter.value = state.nodeStatusFilter;
+    }
+
+    if (dom.nodeSortSelect && dom.nodeSortSelect.value !== state.nodeSortBy) {
+      dom.nodeSortSelect.value = state.nodeSortBy;
+    }
+
+    await syncSelectedNodeWithVisibleNodes();
+  };
+
   const render = () => {
     applyActiveView(dom, state);
 
@@ -382,6 +542,12 @@ export function initializePlatformSurface(options = {}) {
 
     const nodeSummary = summarizeNodes(state.nodes);
     const oncallSummary = normalizeOncallSummary(state.oncallSummary);
+    const nodeAttentionById = buildNodeAttentionById(oncallSummary);
+    const visibleNodes = filterAndSortNodes(state.nodes, {
+      searchTerm: state.nodeSearchTerm,
+      statusFilter: state.nodeStatusFilter,
+      sortBy: state.nodeSortBy,
+    }, nodeAttentionById);
     const governanceSummary = normalizeGovernanceSummary(state.governanceOverview?.summary);
     const managerHotspots = Array.isArray(state.governanceOverview?.managerHotspots)
       ? state.governanceOverview.managerHotspots
@@ -405,10 +571,17 @@ export function initializePlatformSurface(options = {}) {
     const selectedNodeLabel = state.selectedNodeDetail?.node?.displayName
       || state.selectedNodeDetail?.node?.nodeId
       || state.selectedNodeId;
+    const selectedNodeAttention = selectedNodeLabel
+      ? nodeAttentionById[state.selectedNodeId] ?? null
+      : null;
+    const selectedNodeActionResult = state.nodeActionResult?.nodeId === state.selectedNodeId
+      ? state.nodeActionResult
+      : null;
     const selectedMailboxItem = state.mailboxItems.find(
       (item) => item?.entry?.mailboxEntryId === state.selectedMailboxEntryId,
     ) ?? null;
     const hasNodes = state.nodes.length > 0;
+    const hasVisibleNodes = visibleNodes.length > 0;
     const hasSelectedNodeDetail = Boolean(state.selectedNodeDetail?.node?.nodeId);
     const hasOncallRecommendations = oncallRecommendations.length > 0;
     const hasWaitingItems = state.waitingItems.length > 0;
@@ -424,7 +597,7 @@ export function initializePlatformSurface(options = {}) {
       : state.loading
         ? "正在从平台控制面读取节点与治理摘要。"
         : state.ownerPrincipalId
-          ? `当前 ownerPrincipalId：${state.ownerPrincipalId}`
+          ? `已显示 ${visibleNodes.length} / ${state.nodes.length} 台节点；筛选：${resolveNodeStatusFilterLabel(state.nodeStatusFilter)}；排序：${resolveNodeSortByLabel(state.nodeSortBy)}。`
           : "请先填写 ownerPrincipalId，再读取当前平台控制面。";
     const governanceStatusMessage = state.loadErrorMessage
       ? state.loadErrorMessage
@@ -652,17 +825,19 @@ export function initializePlatformSurface(options = {}) {
     }
 
     if (dom.nodesEmpty) {
-      dom.nodesEmpty.hidden = hasNodes;
+      dom.nodesEmpty.hidden = hasVisibleNodes;
       dom.nodesEmpty.textContent = state.loadErrorMessage
         ? "读取失败，请检查 ownerPrincipalId 或当前平台进程状态。"
-        : state.ownerPrincipalId
+        : hasNodes
+          ? "当前筛选条件下没有匹配节点。"
+          : state.ownerPrincipalId
           ? "当前 ownerPrincipalId 下还没有注册节点。"
           : "先填写 ownerPrincipalId，再从平台控制面读取节点列表。";
     }
 
     if (dom.nodesList) {
-      dom.nodesList.innerHTML = hasNodes
-        ? state.nodes.map((node) => renderNodeCard(node, state.selectedNodeId)).join("")
+      dom.nodesList.innerHTML = hasVisibleNodes
+        ? visibleNodes.map((node) => renderNodeCard(node, state.selectedNodeId, nodeAttentionById[node?.nodeId ?? ""])).join("")
         : "";
     }
 
@@ -672,8 +847,12 @@ export function initializePlatformSurface(options = {}) {
 
     if (dom.nodeDetail) {
       dom.nodeDetail.innerHTML = hasSelectedNodeDetail
-        ? renderNodeDetail(state.selectedNodeDetail, state.oncallSummary?.generatedAt)
-        : hasNodes
+        ? renderNodeDetail(state.selectedNodeDetail, {
+          referenceNow: state.oncallSummary?.generatedAt,
+          attention: selectedNodeAttention,
+          actionResult: selectedNodeActionResult,
+        })
+        : hasVisibleNodes
           ? '<p class="platform-inline-note">点击任意节点卡片，查看当前 detail。</p>'
           : "";
     }
@@ -1023,6 +1202,7 @@ export function initializePlatformSurface(options = {}) {
       state.nodes = [];
       state.selectedNodeId = "";
       state.selectedNodeDetail = null;
+      state.nodeActionResult = null;
       state.oncallSummary = createEmptyOncallSummary();
       state.governanceOverview = {
         summary: { ...EMPTY_GOVERNANCE_SUMMARY },
@@ -1102,6 +1282,7 @@ export function initializePlatformSurface(options = {}) {
 
       state.nodes = Array.isArray(nodesPayload?.nodes) ? nodesPayload.nodes : [];
       state.oncallSummary = normalizeOncallSummary(oncallPayload);
+      state.nodeActionResult = null;
       state.governanceOverview = {
         summary: normalizeGovernanceSummary(governancePayload?.summary),
         managerHotspots: Array.isArray(governancePayload?.managerHotspots) ? governancePayload.managerHotspots : [],
@@ -1117,9 +1298,15 @@ export function initializePlatformSurface(options = {}) {
       state.agents = Array.isArray(agentsPayload?.agents) ? agentsPayload.agents : [];
       state.projectBindings = Array.isArray(projectBindingsPayload?.bindings) ? projectBindingsPayload.bindings : [];
 
-      if (!state.nodes.some((node) => node?.nodeId === state.selectedNodeId)) {
-        state.selectedNodeId = typeof state.nodes[0]?.nodeId === "string"
-          ? state.nodes[0].nodeId
+      const visibleNodes = filterAndSortNodes(state.nodes, {
+        searchTerm: state.nodeSearchTerm,
+        statusFilter: state.nodeStatusFilter,
+        sortBy: state.nodeSortBy,
+      }, buildNodeAttentionById(state.oncallSummary));
+
+      if (!visibleNodes.some((node) => node?.nodeId === state.selectedNodeId)) {
+        state.selectedNodeId = typeof visibleNodes[0]?.nodeId === "string"
+          ? visibleNodes[0].nodeId
           : "";
       }
 
@@ -1211,6 +1398,7 @@ export function initializePlatformSurface(options = {}) {
       state.nodes = [];
       state.selectedNodeId = "";
       state.selectedNodeDetail = null;
+      state.nodeActionResult = null;
       state.oncallSummary = createEmptyOncallSummary();
       state.governanceOverview = {
         summary: { ...EMPTY_GOVERNANCE_SUMMARY },
@@ -1811,6 +1999,8 @@ export function initializePlatformSurface(options = {}) {
         state.nodes = state.nodes.map((node) => node?.nodeId === updatedNode.nodeId ? updatedNode : node);
       }
 
+      state.nodeActionResult = buildNodeActionResult(action, normalizedNodeId, payload);
+
       if (action === "reclaim") {
         const summary = summarizeReclaimResult(payload);
         state.actionMessage = [
@@ -1823,6 +2013,18 @@ export function initializePlatformSurface(options = {}) {
         state.actionMessage = `节点 ${normalizedNodeId} 已更新为 ${resolveNodeStatusLabel(updatedNode.status)}。`;
       } else {
         state.actionMessage = `节点 ${normalizedNodeId} 的 ${action} 已完成。`;
+      }
+
+      if (state.selectedNodeId === normalizedNodeId) {
+        try {
+          state.selectedNodeDetail = await requestPlatformJson(fetchFn, "/api/platform/nodes/detail", {
+            ownerPrincipalId: state.ownerPrincipalId,
+            nodeId: normalizedNodeId,
+          }, "读取节点详情失败。");
+          state.loadErrorMessage = "";
+        } catch (error) {
+          state.loadErrorMessage = error instanceof Error ? error.message : "读取节点详情失败。";
+        }
       }
     } catch (error) {
       state.actionMessage = error instanceof Error ? error.message : `节点 ${action} 失败。`;
@@ -1839,6 +2041,24 @@ export function initializePlatformSurface(options = {}) {
 
   dom.refreshButton?.addEventListener("click", () => {
     void loadPlatformData();
+  });
+
+  dom.nodeSearchInput?.addEventListener("input", () => {
+    void setNodeListControls({
+      searchTerm: dom.nodeSearchInput?.value ?? "",
+    });
+  });
+
+  dom.nodeStatusFilter?.addEventListener("change", () => {
+    void setNodeListControls({
+      statusFilter: dom.nodeStatusFilter?.value ?? DEFAULT_NODE_STATUS_FILTER,
+    });
+  });
+
+  dom.nodeSortSelect?.addEventListener("change", () => {
+    void setNodeListControls({
+      sortBy: dom.nodeSortSelect?.value ?? DEFAULT_NODE_SORT_BY,
+    });
   });
 
   dom.navToggle?.addEventListener("click", () => {
@@ -2078,13 +2298,14 @@ export function initializePlatformSurface(options = {}) {
     respondMailbox,
     selectMailboxEntry,
     updateNodeStatus,
+    setNodeListControls,
     setActiveView,
     toggleNavigation,
     render,
   };
 }
 
-function renderNodeCard(node, selectedNodeId = "") {
+function renderNodeCard(node, selectedNodeId = "", attention = null) {
   const status = normalizeNodeStatus(node?.status);
   const statusLabel = resolveNodeStatusLabel(status);
   const labels = Array.isArray(node?.labels) ? node.labels : [];
@@ -2105,6 +2326,9 @@ function renderNodeCard(node, selectedNodeId = "") {
     providerCapabilities.length ? `Provider ${providerCapabilities.length}` : "",
   ].filter(Boolean);
   const actions = resolveNodeActions(node);
+  const attentionChip = attention?.recommendationCount
+    ? `<span class="platform-chip severity-${escapeHtml(attention.severity)}">${escapeHtml(resolveNodeAttentionLabel(attention))}</span>`
+    : "";
 
   return `<article
     class="platform-node-card"
@@ -2115,6 +2339,7 @@ function renderNodeCard(node, selectedNodeId = "") {
       <div>
         <h3 class="platform-node-title">${escapeHtml(node?.displayName || node?.nodeId || "未命名节点")}</h3>
         <div class="platform-node-meta">
+          ${attentionChip}
           <span class="platform-chip status-${status}">${escapeHtml(statusLabel)}</span>
           <span class="platform-chip">${escapeHtml(node?.nodeId || "未知 nodeId")}</span>
           <span class="platform-chip">${escapeHtml(node?.organizationId || "未知组织")}</span>
@@ -2138,14 +2363,16 @@ function renderNodeCard(node, selectedNodeId = "") {
   </article>`;
 }
 
-function renderNodeDetail(detail, referenceNow = "") {
+function renderNodeDetail(detail, options = {}) {
   const node = detail?.node ?? {};
   const status = normalizeNodeStatus(node?.status);
   const statusLabel = resolveNodeStatusLabel(status);
-  const heartbeat = summarizeNodeHeartbeat(node, referenceNow);
+  const heartbeat = summarizeNodeHeartbeat(node, options?.referenceNow);
   const leaseSummary = detail?.leaseSummary ?? {};
   const activeExecutionLeases = Array.isArray(detail?.activeExecutionLeases) ? detail.activeExecutionLeases : [];
   const recentExecutionLeases = Array.isArray(detail?.recentExecutionLeases) ? detail.recentExecutionLeases : [];
+  const attention = options?.attention ?? null;
+  const actionResult = options?.actionResult ?? null;
   const capabilitySections = [
     {
       label: "工作区能力",
@@ -2177,6 +2404,9 @@ function renderNodeDetail(detail, referenceNow = "") {
           <p class="platform-inline-note">这里优先回答三件事：这台节点是谁、现在能不能接单、手上还挂着什么 lease。</p>
         </div>
         <div class="platform-node-detail-meta">
+          ${attention?.recommendationCount
+            ? `<span class="platform-chip severity-${escapeHtml(attention.severity)}">${escapeHtml(resolveNodeAttentionLabel(attention))}</span>`
+            : ""}
           <span class="platform-chip status-${status}">${escapeHtml(statusLabel)}</span>
           <span class="platform-chip">${escapeHtml(node?.nodeId || "未知 nodeId")}</span>
         </div>
@@ -2209,6 +2439,8 @@ function renderNodeDetail(detail, referenceNow = "") {
         </article>
       </div>
     </section>
+
+    ${actionResult ? renderNodeActionResult(actionResult) : ""}
 
     <section class="platform-node-detail-section">
       <div>
@@ -2304,6 +2536,60 @@ function renderNodeExecutionLeaseCard(item) {
     item?.run?.runId || item?.lease?.runId || "",
     item?.lease?.leaseId || "",
     item?.lease?.updatedAt ? `更新 ${formatTimestamp(item.lease.updatedAt)}` : "",
+  ].filter(Boolean);
+
+  return `<article class="platform-node-detail-item">
+    <div>
+      <strong>${escapeHtml(workItemGoal)}</strong>
+      <p class="platform-inline-note">targetAgent：${escapeHtml(targetAgentLabel)}</p>
+    </div>
+    <div class="platform-node-detail-meta">
+      ${metaChips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+    </div>
+  </article>`;
+}
+
+function renderNodeActionResult(actionResult) {
+  const summaryChips = [
+    actionResult?.action ? `动作 ${resolveNodeActionLabel(actionResult.action)}` : "",
+    actionResult?.node?.status ? `状态 ${resolveNodeStatusLabel(actionResult.node.status)}` : "",
+    actionResult?.summary?.activeLeaseCount != null ? `activeLease ${normalizeNumber(actionResult.summary.activeLeaseCount, 0)}` : "",
+    actionResult?.summary?.reclaimedRunCount != null ? `reclaimedRun ${normalizeNumber(actionResult.summary.reclaimedRunCount, 0)}` : "",
+    actionResult?.summary?.requeuedWorkItemCount != null ? `requeuedWorkItem ${normalizeNumber(actionResult.summary.requeuedWorkItemCount, 0)}` : "",
+  ].filter(Boolean);
+  const reclaimedLeases = Array.isArray(actionResult?.reclaimedLeases) ? actionResult.reclaimedLeases : [];
+  const resultSummary = actionResult?.summaryText || "本次治理已经执行完成。";
+
+  return `<section class="platform-node-detail-section">
+    <div>
+      <h3>最近治理结果</h3>
+      <p class="platform-inline-note">Drain / Offline / Reclaim 的结果会直接落在这里，不再只停在一行提示文案。</p>
+    </div>
+    <article class="platform-node-detail-item platform-node-action-result">
+      <div>
+        <strong>${escapeHtml(resultSummary)}</strong>
+        <p class="platform-inline-note">这块用于回答“刚才点完按钮到底影响了哪些 run / work-item”。</p>
+      </div>
+      <div class="platform-node-detail-meta">
+        ${summaryChips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+      </div>
+    </article>
+    ${reclaimedLeases.length > 0
+      ? `<div class="platform-node-detail-list">${reclaimedLeases.map((item) => renderNodeRecoveredLeaseCard(item)).join("")}</div>`
+      : ""}
+  </section>`;
+}
+
+function renderNodeRecoveredLeaseCard(item) {
+  const workItemGoal = item?.workItem?.goal || item?.workItem?.workItemId || item?.lease?.workItemId || "未知 work-item";
+  const targetAgentLabel = item?.targetAgent?.displayName || item?.targetAgent?.agentId || item?.lease?.targetAgentId || "未绑定 agent";
+  const metaChips = [
+    item?.recoveryAction ? resolveRecoveryActionLabel(item.recoveryAction) : "",
+    item?.run?.status ? `Run ${item.run.status}` : "",
+    item?.workItem?.status ? `Work-item ${item.workItem.status}` : "",
+    item?.lease?.status ? `Lease ${item.lease.status}` : "",
+    item?.run?.runId || item?.lease?.runId || "",
+    item?.lease?.leaseId || "",
   ].filter(Boolean);
 
   return `<article class="platform-node-detail-item">
@@ -2803,6 +3089,161 @@ function resolveNodeActions(node) {
     default:
       return [];
   }
+}
+
+function buildNodeActionResult(action, nodeId, payload) {
+  return {
+    nodeId,
+    action,
+    node: payload?.node ?? null,
+    summary: action === "reclaim" ? summarizeReclaimResult(payload) : null,
+    summaryText: action === "reclaim"
+      ? `节点 ${nodeId} reclaim 完成，影响项已展开。`
+      : `节点 ${nodeId} 已执行 ${resolveNodeActionLabel(action)}。`,
+    reclaimedLeases: Array.isArray(payload?.reclaimedLeases) ? payload.reclaimedLeases : [],
+  };
+}
+
+function normalizeNodeStatusFilter(value) {
+  return ["all", "attention", "online", "draining", "offline"].includes(value)
+    ? value
+    : DEFAULT_NODE_STATUS_FILTER;
+}
+
+function normalizeNodeSortBy(value) {
+  return ["attention", "displayName", "nodeId"].includes(value)
+    ? value
+    : DEFAULT_NODE_SORT_BY;
+}
+
+function normalizeNodeSearchTerm(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function resolveNodeStatusFilterLabel(value) {
+  switch (normalizeNodeStatusFilter(value)) {
+    case "attention":
+      return "仅值班关注";
+    case "online":
+      return "仅在线";
+    case "draining":
+      return "仅排水中";
+    case "offline":
+      return "仅离线";
+    default:
+      return "全部节点";
+  }
+}
+
+function resolveNodeSortByLabel(value) {
+  switch (normalizeNodeSortBy(value)) {
+    case "displayName":
+      return "按名称";
+    case "nodeId":
+      return "按 nodeId";
+    default:
+      return "值班优先";
+  }
+}
+
+function resolveNodeActionLabel(action) {
+  switch (action) {
+    case "drain":
+      return "Drain";
+    case "offline":
+      return "Offline";
+    case "reclaim":
+      return "Reclaim";
+    default:
+      return typeof action === "string" ? action : "治理动作";
+  }
+}
+
+function resolveRecoveryActionLabel(action) {
+  switch (action) {
+    case "requeued":
+      return "已重新排队";
+    case "waiting_preserved":
+      return "等待态保留";
+    case "lease_revoked":
+      return "仅撤销 lease";
+    default:
+      return typeof action === "string" ? action : "已处理";
+  }
+}
+
+function resolveNodeAttentionLabel(attention) {
+  const severity = resolveOncallSeverity(attention?.severity);
+  const count = normalizeNumber(attention?.recommendationCount, 0);
+  return count > 1
+    ? `${resolveOncallSeverityLabel(severity)} ${count} 条`
+    : resolveOncallSeverityLabel(severity);
+}
+
+function rankAttentionSeverity(value) {
+  switch (resolveOncallSeverity(value)) {
+    case "error":
+      return 3;
+    case "warning":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function rankNodeStatusForOps(value) {
+  switch (normalizeNodeStatus(value)) {
+    case "offline":
+      return 3;
+    case "draining":
+      return 2;
+    case "online":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function compareNodesBySort(left, right, sortBy, attentionByNodeId) {
+  if (normalizeNodeSortBy(sortBy) === "displayName") {
+    return compareNodeDisplayName(left, right) || compareNodeId(left, right);
+  }
+
+  if (normalizeNodeSortBy(sortBy) === "nodeId") {
+    return compareNodeId(left, right) || compareNodeDisplayName(left, right);
+  }
+
+  const leftAttention = attentionByNodeId[left?.nodeId ?? ""] ?? null;
+  const rightAttention = attentionByNodeId[right?.nodeId ?? ""] ?? null;
+  const severityDiff = rankAttentionSeverity(rightAttention?.severity) - rankAttentionSeverity(leftAttention?.severity);
+
+  if (severityDiff !== 0) {
+    return severityDiff;
+  }
+
+  const recommendationDiff = normalizeNumber(rightAttention?.recommendationCount, 0)
+    - normalizeNumber(leftAttention?.recommendationCount, 0);
+
+  if (recommendationDiff !== 0) {
+    return recommendationDiff;
+  }
+
+  const statusDiff = rankNodeStatusForOps(right?.status) - rankNodeStatusForOps(left?.status);
+
+  if (statusDiff !== 0) {
+    return statusDiff;
+  }
+
+  return compareNodeDisplayName(left, right) || compareNodeId(left, right);
+}
+
+function compareNodeDisplayName(left, right) {
+  return String(left?.displayName || left?.nodeId || "")
+    .localeCompare(String(right?.displayName || right?.nodeId || ""), "zh-CN");
+}
+
+function compareNodeId(left, right) {
+  return String(left?.nodeId || "").localeCompare(String(right?.nodeId || ""), "en");
 }
 
 function normalizeOncallSummary(summary) {
