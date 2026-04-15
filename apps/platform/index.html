@@ -11,657 +11,757 @@
     <link rel="stylesheet" href="/platform.css" />
   </head>
   <body>
-    <div class="platform-shell">
-      <header class="platform-hero">
-        <div>
+    <div class="platform-shell platform-workbench">
+      <aside id="platform-sidebar" class="platform-sidebar">
+        <div class="platform-sidebar-brand">
           <p class="platform-kicker">Control Plane</p>
           <h1>Themis Platform</h1>
           <p class="platform-copy">
-            独立平台控制面首版。当前已由 `themis-platform` 自己承接 nodes、governance、协作、
-            work-items、mailbox、recent runs、agents、projects 和值班建议读面。
+            左侧按巡检场景切功能，右侧一次只显示一个工作区，先把节点、值班、治理和执行动作收成真正可用的平台工作台。
           </p>
         </div>
-        <div class="platform-session-card">
+
+        <div class="platform-session-card platform-session-card--sidebar">
           <p class="platform-session-label">当前 Web 会话</p>
           <strong id="platform-session-title">正在确认登录状态</strong>
           <p id="platform-session-note" class="platform-session-note">
             登录通过后，这里会显示当前平台访问口令标签。
           </p>
         </div>
-      </header>
 
-      <main class="platform-main">
-        <section class="platform-panel">
-          <div class="platform-panel-head">
-            <div>
-              <p class="platform-panel-kicker">Access</p>
-              <h2>平台 ownerPrincipalId</h2>
-            </div>
-            <button id="platform-refresh-button" type="button" class="platform-button subtle">刷新控制面</button>
-          </div>
+        <button id="platform-nav-toggle" type="button" class="platform-button subtle platform-nav-toggle">
+          展开导航
+        </button>
 
-          <p class="platform-panel-copy">
-            当前首版平台页会按 `ownerPrincipalId` 拉取节点总览和最小治理摘要。你可以手动填写，也可以从主 Themis
-            的兼容入口跳转过来。
-          </p>
+        <nav class="platform-sidebar-nav" aria-label="Platform views">
+          <button id="platform-nav-nodes-oncall" type="button" class="platform-nav-item">节点与值班</button>
+          <button id="platform-nav-governance" type="button" class="platform-nav-item">治理与队列</button>
+          <button id="platform-nav-work-items" type="button" class="platform-nav-item">Work Items</button>
+          <button id="platform-nav-mailbox" type="button" class="platform-nav-item">Mailbox</button>
+          <button id="platform-nav-agents-projects" type="button" class="platform-nav-item">Agents / Projects</button>
+          <button id="platform-nav-collaboration-runs" type="button" class="platform-nav-item">协作与 Runs</button>
+          <button id="platform-nav-overview" type="button" class="platform-nav-item">平台概览</button>
+        </nav>
 
-          <form id="platform-owner-form" class="platform-owner-form">
-            <label class="platform-field">
-              <span>ownerPrincipalId</span>
-              <input
-                id="platform-owner-input"
-                type="text"
-                placeholder="例如：principal-platform-owner"
-                autocomplete="off"
-                spellcheck="false"
-              />
-            </label>
-            <button id="platform-owner-submit" type="submit" class="platform-button">加载节点</button>
-          </form>
-
+        <div class="platform-sidebar-status">
           <p id="platform-owner-note" class="platform-inline-note">
             如果你是从主 Themis 的兼容入口跳转过来的，这里通常会自动带上当前 ownerPrincipalId。
           </p>
-        </section>
+          <button id="platform-refresh-button" type="button" class="platform-button subtle">刷新控制面</button>
+        </div>
+      </aside>
 
-        <section class="platform-panel">
-          <div class="platform-panel-head">
-            <div>
-              <p class="platform-panel-kicker">Worker Fleet</p>
-              <h2>Nodes 总览</h2>
+      <main class="platform-workspace">
+        <section id="platform-view-nodes-oncall" class="platform-view">
+          <article class="platform-panel platform-view-hero">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Workbench</p>
+                <h2>节点与值班</h2>
+              </div>
+              <p class="platform-panel-copy">默认首页。先看节点健康度、值班主诊断和当前可执行动作。</p>
             </div>
-            <p class="platform-panel-copy">当前已接入节点读取；节点注册、续心跳、详情与最小治理 API 都已在本仓落地。</p>
-          </div>
+          </article>
 
-          <div class="platform-summary-grid">
-            <article class="platform-summary-card">
-              <span>全部节点</span>
-              <strong id="platform-summary-total">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>在线</span>
-              <strong id="platform-summary-online">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>排水中</span>
-              <strong id="platform-summary-draining">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>离线</span>
-              <strong id="platform-summary-offline">0</strong>
-            </article>
-          </div>
-
-          <p id="platform-nodes-status" class="platform-inline-note">
-            还没有读取节点数据。
-          </p>
-          <p id="platform-action-status" class="platform-inline-note">
-            可直接在节点卡片上执行 drain / offline / reclaim。
-          </p>
-          <p id="platform-nodes-empty" class="platform-empty-state">
-            先填写 ownerPrincipalId，再从平台控制面读取节点列表。
-          </p>
-          <div id="platform-nodes-list" class="platform-nodes-list"></div>
-        </section>
-
-        <section class="platform-panel">
-          <div class="platform-panel-head">
-            <div>
-              <p class="platform-panel-kicker">Governance</p>
-              <h2>Waiting Queue</h2>
+          <section class="platform-panel">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Worker Fleet</p>
+                <h2>Nodes 总览</h2>
+              </div>
+              <p class="platform-panel-copy">当前已接入节点读取；节点注册、续心跳、详情与最小治理 API 都已在本仓落地。</p>
             </div>
-            <p class="platform-panel-copy">
-              当前已由独立 `themis-platform` 页面承接治理摘要与 waiting queue；高关注项会继续汇入下面的值班建议面板。
+
+            <div class="platform-summary-grid">
+              <article class="platform-summary-card">
+                <span>全部节点</span>
+                <strong id="platform-summary-total">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>在线</span>
+                <strong id="platform-summary-online">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>排水中</span>
+                <strong id="platform-summary-draining">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>离线</span>
+                <strong id="platform-summary-offline">0</strong>
+              </article>
+            </div>
+
+            <p id="platform-nodes-status" class="platform-inline-note">
+              还没有读取节点数据。
             </p>
-          </div>
+            <p id="platform-action-status" class="platform-inline-note">
+              可直接在节点卡片上执行 drain / offline / reclaim。
+            </p>
+            <p id="platform-nodes-empty" class="platform-empty-state">
+              先填写 ownerPrincipalId，再从平台控制面读取节点列表。
+            </p>
+            <div id="platform-nodes-list" class="platform-nodes-list"></div>
+          </section>
 
-          <div class="platform-summary-grid">
-            <article class="platform-summary-card">
-              <span>待治理总数</span>
-              <strong id="platform-governance-total">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>等人处理</span>
-              <strong id="platform-governance-waiting-human">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>等 agent</span>
-              <strong id="platform-governance-waiting-agent">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>高关注</span>
-              <strong id="platform-governance-attention">0</strong>
-            </article>
-          </div>
+          <section class="platform-panel">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Oncall</p>
+                <h2>值班建议</h2>
+              </div>
+              <p class="platform-panel-copy">
+                这里会统一汇总 Worker Node attention、waiting 风险、runs 卡点和 paused agents 容量提示，作为平台值班首屏读面。
+              </p>
+            </div>
 
-          <p id="platform-governance-status" class="platform-inline-note">
-            还没有读取治理摘要。
-          </p>
-          <p id="platform-hotspots-summary" class="platform-inline-note">
-            当前还没有 manager hotspot。
-          </p>
-          <div id="platform-hotspots-list" class="platform-hotspots-list"></div>
-          <p id="platform-waiting-empty" class="platform-empty-state">
-            先填写 ownerPrincipalId，再读取当前平台 waiting queue。
-          </p>
-          <div id="platform-waiting-list" class="platform-waiting-list"></div>
+            <div class="platform-summary-grid">
+              <article class="platform-summary-card">
+                <span>错误节点</span>
+                <strong id="platform-oncall-errors">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>告警节点</span>
+                <strong id="platform-oncall-warnings">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>高关注 waiting</span>
+                <strong id="platform-oncall-waiting">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>卡住 runs</span>
+                <strong id="platform-oncall-runs">0</strong>
+              </article>
+            </div>
+
+            <p id="platform-oncall-status" class="platform-inline-note">
+              还没有读取值班建议。
+            </p>
+            <div id="platform-oncall-diagnosis" class="platform-diagnosis-card"></div>
+            <div id="platform-oncall-next-steps" class="platform-next-steps"></div>
+            <p id="platform-oncall-empty" class="platform-empty-state">
+              先填写 ownerPrincipalId，再读取当前平台的值班建议。
+            </p>
+            <div id="platform-oncall-list" class="platform-oncall-list"></div>
+          </section>
         </section>
 
-        <section class="platform-panel">
-          <div class="platform-panel-head">
-            <div>
-              <p class="platform-panel-kicker">Oncall</p>
-              <h2>值班建议</h2>
+        <section id="platform-view-governance" class="platform-view" hidden>
+          <article class="platform-panel platform-view-hero">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Workbench</p>
+                <h2>治理与队列</h2>
+              </div>
+              <p class="platform-panel-copy">把治理摘要、manager hotspot 和 waiting queue 摆在一起，方便你顺着高关注项往下看。</p>
             </div>
-            <p class="platform-panel-copy">
-              这里会统一汇总 Worker Node attention、waiting 风险、runs 卡点和 paused agents 容量提示，作为平台值班首屏读面。
+          </article>
+
+          <section class="platform-panel">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Governance</p>
+                <h2>Waiting Queue</h2>
+              </div>
+              <p class="platform-panel-copy">
+                当前已由独立 `themis-platform` 页面承接治理摘要与 waiting queue；高关注项会继续汇入下面的值班建议面板。
+              </p>
+            </div>
+
+            <div class="platform-summary-grid">
+              <article class="platform-summary-card">
+                <span>待治理总数</span>
+                <strong id="platform-governance-total">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>等人处理</span>
+                <strong id="platform-governance-waiting-human">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>等 agent</span>
+                <strong id="platform-governance-waiting-agent">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>高关注</span>
+                <strong id="platform-governance-attention">0</strong>
+              </article>
+            </div>
+
+            <p id="platform-governance-status" class="platform-inline-note">
+              还没有读取治理摘要。
             </p>
-          </div>
-
-          <div class="platform-summary-grid">
-            <article class="platform-summary-card">
-              <span>错误节点</span>
-              <strong id="platform-oncall-errors">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>告警节点</span>
-              <strong id="platform-oncall-warnings">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>高关注 waiting</span>
-              <strong id="platform-oncall-waiting">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>卡住 runs</span>
-              <strong id="platform-oncall-runs">0</strong>
-            </article>
-          </div>
-
-          <p id="platform-oncall-status" class="platform-inline-note">
-            还没有读取值班建议。
-          </p>
-          <div id="platform-oncall-diagnosis" class="platform-diagnosis-card"></div>
-          <div id="platform-oncall-next-steps" class="platform-next-steps"></div>
-          <p id="platform-oncall-empty" class="platform-empty-state">
-            先填写 ownerPrincipalId，再读取当前平台的值班建议。
-          </p>
-          <div id="platform-oncall-list" class="platform-oncall-list"></div>
+            <p id="platform-hotspots-summary" class="platform-inline-note">
+              当前还没有 manager hotspot。
+            </p>
+            <div id="platform-hotspots-list" class="platform-hotspots-list"></div>
+            <p id="platform-waiting-empty" class="platform-empty-state">
+              先填写 ownerPrincipalId，再读取当前平台 waiting queue。
+            </p>
+            <div id="platform-waiting-list" class="platform-waiting-list"></div>
+          </section>
         </section>
 
-        <section class="platform-panel">
-          <div class="platform-panel-head">
-            <div>
-              <p class="platform-panel-kicker">Workflow</p>
-              <h2>Work Items</h2>
+        <section id="platform-view-work-items" class="platform-view" hidden>
+          <article class="platform-panel platform-view-hero">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Workbench</p>
+                <h2>Work Items</h2>
+              </div>
+              <p class="platform-panel-copy">这里保留完整 work-item 派发与处理闭环，右侧详情区只聚焦当前选中的事项。</p>
             </div>
-            <p class="platform-panel-copy">
-              当前开始由独立 `themis-platform` 页面承接 work-items 的最小读写闭环，包含列表、详情、派发、响应、升级与取消。
+          </article>
+
+          <section class="platform-panel">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Workflow</p>
+                <h2>Work Items</h2>
+              </div>
+              <p class="platform-panel-copy">
+                当前开始由独立 `themis-platform` 页面承接 work-items 的最小读写闭环，包含列表、详情、派发、响应、升级与取消。
+              </p>
+            </div>
+
+            <div class="platform-summary-grid">
+              <article class="platform-summary-card">
+                <span>总数</span>
+                <strong id="platform-work-items-total">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>等人</span>
+                <strong id="platform-work-items-waiting-human">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>等 agent</span>
+                <strong id="platform-work-items-waiting-agent">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>排队中</span>
+                <strong id="platform-work-items-queued">0</strong>
+              </article>
+            </div>
+
+            <p id="platform-work-items-status" class="platform-inline-note">
+              还没有读取 work-items。
             </p>
-          </div>
+            <p id="platform-work-item-action-status" class="platform-inline-note">
+              可在详情面板里对当前选中的 work-item 执行 respond / escalate / cancel。
+            </p>
 
-          <div class="platform-summary-grid">
-            <article class="platform-summary-card">
-              <span>总数</span>
-              <strong id="platform-work-items-total">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>等人</span>
-              <strong id="platform-work-items-waiting-human">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>等 agent</span>
-              <strong id="platform-work-items-waiting-agent">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>排队中</span>
-              <strong id="platform-work-items-queued">0</strong>
-            </article>
-          </div>
+            <div class="platform-form-stack">
+              <article class="platform-form-card">
+                <div class="platform-form-head">
+                  <div>
+                    <p class="platform-panel-kicker">Dispatch</p>
+                    <h3>新建 work-item</h3>
+                  </div>
+                </div>
 
-          <p id="platform-work-items-status" class="platform-inline-note">
-            还没有读取 work-items。
-          </p>
-          <p id="platform-work-item-action-status" class="platform-inline-note">
-            可在详情面板里对当前选中的 work-item 执行 respond / escalate / cancel。
-          </p>
+                <form id="platform-dispatch-form" class="platform-action-grid">
+                  <label class="platform-field">
+                    <span>targetAgentId</span>
+                    <input
+                      id="platform-dispatch-agent-input"
+                      type="text"
+                      placeholder="例如：agent-delta"
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                  </label>
+                  <label class="platform-field">
+                    <span>goal</span>
+                    <input
+                      id="platform-dispatch-goal-input"
+                      type="text"
+                      placeholder="例如：等待单独排队的前端任务"
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                  </label>
+                  <label class="platform-field">
+                    <span>sourceType</span>
+                    <select id="platform-dispatch-source-select">
+                      <option value="human">human</option>
+                      <option value="agent">agent</option>
+                      <option value="system">system</option>
+                    </select>
+                  </label>
+                  <label class="platform-field">
+                    <span>priority</span>
+                    <select id="platform-dispatch-priority-select">
+                      <option value="normal">normal</option>
+                      <option value="urgent">urgent</option>
+                      <option value="high">high</option>
+                      <option value="low">low</option>
+                    </select>
+                  </label>
+                  <button id="platform-dispatch-submit" type="submit" class="platform-button">派发 work-item</button>
+                </form>
+              </article>
+            </div>
 
-          <div class="platform-form-stack">
+            <div class="platform-split-grid">
+              <div>
+                <p id="platform-work-items-empty" class="platform-empty-state">
+                  先填写 ownerPrincipalId，再读取当前平台 work-items。
+                </p>
+                <div id="platform-work-items-list" class="platform-work-items-list"></div>
+              </div>
+              <div>
+                <div id="platform-work-item-detail" class="platform-card-detail"></div>
+
+                <article class="platform-form-card platform-form-card--secondary">
+                  <div class="platform-form-head">
+                    <div>
+                      <p class="platform-panel-kicker">Respond</p>
+                      <h3>处理当前 work-item</h3>
+                    </div>
+                  </div>
+
+                  <form id="platform-work-item-response-form" class="platform-action-grid platform-action-grid--compact">
+                    <label class="platform-field">
+                      <span>decision</span>
+                      <select id="platform-work-item-response-decision">
+                        <option value="approve">approve</option>
+                        <option value="reject">reject</option>
+                        <option value="revise">revise</option>
+                      </select>
+                    </label>
+                    <label class="platform-field platform-field--span-full">
+                      <span>inputText</span>
+                      <textarea
+                        id="platform-work-item-response-input"
+                        rows="4"
+                        placeholder="例如：已确认，可以继续执行。"
+                      ></textarea>
+                    </label>
+                    <button id="platform-work-item-response-submit" type="submit" class="platform-button">
+                      Respond 当前项
+                    </button>
+                  </form>
+
+                  <form id="platform-work-item-escalate-form" class="platform-action-grid platform-action-grid--compact">
+                    <label class="platform-field platform-field--span-full">
+                      <span>escalation input</span>
+                      <textarea
+                        id="platform-work-item-escalate-input"
+                        rows="3"
+                        placeholder="例如：请平台 owner 接手。"
+                      ></textarea>
+                    </label>
+                    <button id="platform-work-item-escalate-submit" type="submit" class="platform-button subtle">
+                      Escalate 当前项
+                    </button>
+                    <button id="platform-work-item-cancel-button" type="button" class="platform-button subtle">
+                      Cancel 当前项
+                    </button>
+                  </form>
+                </article>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="platform-view-mailbox" class="platform-view" hidden>
+          <article class="platform-panel platform-view-hero">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Workbench</p>
+                <h2>Mailbox</h2>
+              </div>
+              <p class="platform-panel-copy">按 agent 视角处理 inbox，保留 pull、ack、respond 的最小闭环。</p>
+            </div>
+          </article>
+
+          <section class="platform-panel">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Mailbox</p>
+                <h2>Agent Inbox</h2>
+              </div>
+              <p class="platform-panel-copy">
+                当前页面会按 agent 视角读取 mailbox，并提供最小的 pull / ack / respond 闭环。
+              </p>
+            </div>
+
+            <form id="platform-mailbox-form" class="platform-owner-form">
+              <label class="platform-field">
+                <span>agentId</span>
+                <input
+                  id="platform-mailbox-agent-input"
+                  type="text"
+                  placeholder="例如：agent-delta"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <button id="platform-mailbox-submit" type="submit" class="platform-button">加载 mailbox</button>
+            </form>
+
+            <div class="platform-summary-grid platform-summary-grid--compact-three">
+              <article class="platform-summary-card">
+                <span>消息总数</span>
+                <strong id="platform-mailbox-total">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>待处理</span>
+                <strong id="platform-mailbox-pending">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>已确认</span>
+                <strong id="platform-mailbox-acked">0</strong>
+              </article>
+            </div>
+
+            <p id="platform-mailbox-status" class="platform-inline-note">
+              还没有读取 mailbox。
+            </p>
+            <p id="platform-mailbox-action-status" class="platform-inline-note">
+              选择一条消息后，可执行 pull / ack / respond。
+            </p>
+
+            <div class="platform-inline-actions">
+              <button id="platform-mailbox-pull-button" type="button" class="platform-button subtle">
+                Pull 下一条
+              </button>
+              <button id="platform-mailbox-ack-button" type="button" class="platform-button subtle">
+                Ack 当前消息
+              </button>
+            </div>
+
+            <div class="platform-split-grid">
+              <div>
+                <p id="platform-mailbox-empty" class="platform-empty-state">
+                  先填写 agentId，再读取当前 mailbox。
+                </p>
+                <div id="platform-mailbox-list" class="platform-mailbox-list"></div>
+              </div>
+              <div>
+                <div id="platform-mailbox-detail" class="platform-card-detail"></div>
+
+                <article class="platform-form-card platform-form-card--secondary">
+                  <div class="platform-form-head">
+                    <div>
+                      <p class="platform-panel-kicker">Respond</p>
+                      <h3>回复当前 mailbox</h3>
+                    </div>
+                  </div>
+
+                  <form id="platform-mailbox-response-form" class="platform-action-grid platform-action-grid--compact">
+                    <label class="platform-field">
+                      <span>decision</span>
+                      <select id="platform-mailbox-response-decision">
+                        <option value="approve">approve</option>
+                        <option value="reject">reject</option>
+                        <option value="revise">revise</option>
+                      </select>
+                    </label>
+                    <label class="platform-field platform-field--span-full">
+                      <span>inputText</span>
+                      <textarea
+                        id="platform-mailbox-response-input"
+                        rows="4"
+                        placeholder="例如：已确认，可以继续执行。"
+                      ></textarea>
+                    </label>
+                    <button id="platform-mailbox-response-submit" type="submit" class="platform-button">
+                      回复 mailbox
+                    </button>
+                  </form>
+                </article>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="platform-view-agents-projects" class="platform-view" hidden>
+          <article class="platform-panel platform-view-hero">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Workbench</p>
+                <h2>Agents / Projects</h2>
+              </div>
+              <p class="platform-panel-copy">把 agent 创建、详情和项目工作区绑定收在同一屏里，方便一边看一边改。</p>
+            </div>
+          </article>
+
+          <section class="platform-panel">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Control Plane</p>
+                <h2>Agents & Projects</h2>
+              </div>
+              <p class="platform-panel-copy">
+                当前开始由独立 `themis-platform` 页面承接 `agents + projects` 的最小真实控制面，先覆盖 agent
+                创建/详情与项目工作区绑定读写。
+              </p>
+            </div>
+
+            <div class="platform-summary-grid platform-summary-grid--compact-two">
+              <article class="platform-summary-card">
+                <span>Agents</span>
+                <strong id="platform-agents-total">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>Projects</span>
+                <strong id="platform-projects-total">0</strong>
+              </article>
+            </div>
+
+            <p id="platform-agents-status" class="platform-inline-note">
+              还没有读取 agents 与 projects。
+            </p>
+            <p id="platform-agents-action-status" class="platform-inline-note">
+              可在这里创建 agent，并维护项目工作区绑定。
+            </p>
+
             <article class="platform-form-card">
               <div class="platform-form-head">
                 <div>
-                  <p class="platform-panel-kicker">Dispatch</p>
-                  <h3>新建 work-item</h3>
+                  <p class="platform-panel-kicker">Create Agent</p>
+                  <h3>新建平台 agent</h3>
                 </div>
               </div>
 
-              <form id="platform-dispatch-form" class="platform-action-grid">
+              <form id="platform-agent-create-form" class="platform-action-grid">
                 <label class="platform-field">
-                  <span>targetAgentId</span>
+                  <span>departmentRole</span>
                   <input
-                    id="platform-dispatch-agent-input"
+                    id="platform-agent-create-role-input"
                     type="text"
-                    placeholder="例如：agent-delta"
+                    placeholder="例如：Platform"
                     autocomplete="off"
                     spellcheck="false"
                   />
                 </label>
                 <label class="platform-field">
-                  <span>goal</span>
+                  <span>displayName</span>
                   <input
-                    id="platform-dispatch-goal-input"
+                    id="platform-agent-create-name-input"
                     type="text"
-                    placeholder="例如：等待单独排队的前端任务"
+                    placeholder="例如：平台值班员"
                     autocomplete="off"
                     spellcheck="false"
                   />
                 </label>
-                <label class="platform-field">
-                  <span>sourceType</span>
-                  <select id="platform-dispatch-source-select">
-                    <option value="human">human</option>
-                    <option value="agent">agent</option>
-                    <option value="system">system</option>
-                  </select>
+                <label class="platform-field platform-field--span-full">
+                  <span>mission</span>
+                  <textarea
+                    id="platform-agent-create-mission-input"
+                    rows="3"
+                    placeholder="例如：负责平台控制面最小治理。"
+                  ></textarea>
                 </label>
-                <label class="platform-field">
-                  <span>priority</span>
-                  <select id="platform-dispatch-priority-select">
-                    <option value="normal">normal</option>
-                    <option value="urgent">urgent</option>
-                    <option value="high">high</option>
-                    <option value="low">low</option>
-                  </select>
-                </label>
-                <button id="platform-dispatch-submit" type="submit" class="platform-button">派发 work-item</button>
+                <button id="platform-agent-create-submit" type="submit" class="platform-button">创建 agent</button>
               </form>
             </article>
-          </div>
 
-          <div class="platform-split-grid">
-            <div>
-              <p id="platform-work-items-empty" class="platform-empty-state">
-                先填写 ownerPrincipalId，再读取当前平台 work-items。
-              </p>
-              <div id="platform-work-items-list" class="platform-work-items-list"></div>
-            </div>
-            <div>
-              <div id="platform-work-item-detail" class="platform-card-detail"></div>
-
-              <article class="platform-form-card platform-form-card--secondary">
-                <div class="platform-form-head">
-                  <div>
-                    <p class="platform-panel-kicker">Respond</p>
-                    <h3>处理当前 work-item</h3>
-                  </div>
-                </div>
-
-                <form id="platform-work-item-response-form" class="platform-action-grid platform-action-grid--compact">
-                  <label class="platform-field">
-                    <span>decision</span>
-                    <select id="platform-work-item-response-decision">
-                      <option value="approve">approve</option>
-                      <option value="reject">reject</option>
-                      <option value="revise">revise</option>
-                    </select>
-                  </label>
-                  <label class="platform-field platform-field--span-full">
-                    <span>inputText</span>
-                    <textarea
-                      id="platform-work-item-response-input"
-                      rows="4"
-                      placeholder="例如：已确认，可以继续执行。"
-                    ></textarea>
-                  </label>
-                  <button id="platform-work-item-response-submit" type="submit" class="platform-button">
-                    Respond 当前项
-                  </button>
-                </form>
-
-                <form id="platform-work-item-escalate-form" class="platform-action-grid platform-action-grid--compact">
-                  <label class="platform-field platform-field--span-full">
-                    <span>escalation input</span>
-                    <textarea
-                      id="platform-work-item-escalate-input"
-                      rows="3"
-                      placeholder="例如：请平台 owner 接手。"
-                    ></textarea>
-                  </label>
-                  <button id="platform-work-item-escalate-submit" type="submit" class="platform-button subtle">
-                    Escalate 当前项
-                  </button>
-                  <button id="platform-work-item-cancel-button" type="button" class="platform-button subtle">
-                    Cancel 当前项
-                  </button>
-                </form>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        <section class="platform-panel">
-          <div class="platform-panel-head">
-            <div>
-              <p class="platform-panel-kicker">Mailbox</p>
-              <h2>Agent Inbox</h2>
-            </div>
-            <p class="platform-panel-copy">
-              当前页面会按 agent 视角读取 mailbox，并提供最小的 pull / ack / respond 闭环。
-            </p>
-          </div>
-
-          <form id="platform-mailbox-form" class="platform-owner-form">
-            <label class="platform-field">
-              <span>agentId</span>
-              <input
-                id="platform-mailbox-agent-input"
-                type="text"
-                placeholder="例如：agent-delta"
-                autocomplete="off"
-                spellcheck="false"
-              />
-            </label>
-            <button id="platform-mailbox-submit" type="submit" class="platform-button">加载 mailbox</button>
-          </form>
-
-          <div class="platform-summary-grid platform-summary-grid--compact-three">
-            <article class="platform-summary-card">
-              <span>消息总数</span>
-              <strong id="platform-mailbox-total">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>待处理</span>
-              <strong id="platform-mailbox-pending">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>已确认</span>
-              <strong id="platform-mailbox-acked">0</strong>
-            </article>
-          </div>
-
-          <p id="platform-mailbox-status" class="platform-inline-note">
-            还没有读取 mailbox。
-          </p>
-          <p id="platform-mailbox-action-status" class="platform-inline-note">
-            选择一条消息后，可执行 pull / ack / respond。
-          </p>
-
-          <div class="platform-inline-actions">
-            <button id="platform-mailbox-pull-button" type="button" class="platform-button subtle">
-              Pull 下一条
-            </button>
-            <button id="platform-mailbox-ack-button" type="button" class="platform-button subtle">
-              Ack 当前消息
-            </button>
-          </div>
-
-          <div class="platform-split-grid">
-            <div>
-              <p id="platform-mailbox-empty" class="platform-empty-state">
-                先填写 agentId，再读取当前 mailbox。
-              </p>
-              <div id="platform-mailbox-list" class="platform-mailbox-list"></div>
-            </div>
-            <div>
-              <div id="platform-mailbox-detail" class="platform-card-detail"></div>
-
-              <article class="platform-form-card platform-form-card--secondary">
-                <div class="platform-form-head">
-                  <div>
-                    <p class="platform-panel-kicker">Respond</p>
-                    <h3>回复当前 mailbox</h3>
-                  </div>
-                </div>
-
-                <form id="platform-mailbox-response-form" class="platform-action-grid platform-action-grid--compact">
-                  <label class="platform-field">
-                    <span>decision</span>
-                    <select id="platform-mailbox-response-decision">
-                      <option value="approve">approve</option>
-                      <option value="reject">reject</option>
-                      <option value="revise">revise</option>
-                    </select>
-                  </label>
-                  <label class="platform-field platform-field--span-full">
-                    <span>inputText</span>
-                    <textarea
-                      id="platform-mailbox-response-input"
-                      rows="4"
-                      placeholder="例如：已确认，可以继续执行。"
-                    ></textarea>
-                  </label>
-                  <button id="platform-mailbox-response-submit" type="submit" class="platform-button">
-                    回复 mailbox
-                  </button>
-                </form>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        <section class="platform-panel">
-          <div class="platform-panel-head">
-            <div>
-              <p class="platform-panel-kicker">Control Plane</p>
-              <h2>Agents & Projects</h2>
-            </div>
-            <p class="platform-panel-copy">
-              当前开始由独立 `themis-platform` 页面承接 `agents + projects` 的最小真实控制面，先覆盖 agent
-              创建/详情与项目工作区绑定读写。
-            </p>
-          </div>
-
-          <div class="platform-summary-grid platform-summary-grid--compact-two">
-            <article class="platform-summary-card">
-              <span>Agents</span>
-              <strong id="platform-agents-total">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>Projects</span>
-              <strong id="platform-projects-total">0</strong>
-            </article>
-          </div>
-
-          <p id="platform-agents-status" class="platform-inline-note">
-            还没有读取 agents 与 projects。
-          </p>
-          <p id="platform-agents-action-status" class="platform-inline-note">
-            可在这里创建 agent，并维护项目工作区绑定。
-          </p>
-
-          <article class="platform-form-card">
-            <div class="platform-form-head">
+            <div class="platform-split-grid">
               <div>
-                <p class="platform-panel-kicker">Create Agent</p>
-                <h3>新建平台 agent</h3>
+                <p id="platform-agents-empty" class="platform-empty-state">
+                  先填写 ownerPrincipalId，再读取当前平台 agents。
+                </p>
+                <div id="platform-agents-list" class="platform-agents-list"></div>
+              </div>
+              <div id="platform-agent-detail" class="platform-card-detail"></div>
+            </div>
+
+            <article class="platform-form-card platform-form-card--secondary">
+              <div class="platform-form-head">
+                <div>
+                  <p class="platform-panel-kicker">Project Binding</p>
+                  <h3>项目工作区绑定</h3>
+                </div>
+              </div>
+
+              <form id="platform-project-binding-form" class="platform-action-grid">
+                <label class="platform-field">
+                  <span>projectId</span>
+                  <input
+                    id="platform-project-binding-project-input"
+                    type="text"
+                    placeholder="例如：project-site-foo"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="platform-field">
+                  <span>organizationId</span>
+                  <input
+                    id="platform-project-binding-organization-input"
+                    type="text"
+                    placeholder="例如：org-platform"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="platform-field">
+                  <span>displayName</span>
+                  <input
+                    id="platform-project-binding-display-input"
+                    type="text"
+                    placeholder="例如：官网 site-foo"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="platform-field">
+                  <span>workspacePath</span>
+                  <input
+                    id="platform-project-binding-workspace-input"
+                    type="text"
+                    placeholder="例如：/srv/platform-alpha"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="platform-field">
+                  <span>preferredNodeId</span>
+                  <input
+                    id="platform-project-binding-node-input"
+                    type="text"
+                    placeholder="例如：node-alpha"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="platform-field">
+                  <span>continuityMode</span>
+                  <select id="platform-project-binding-mode-select">
+                    <option value="sticky">sticky</option>
+                    <option value="replicated">replicated</option>
+                  </select>
+                </label>
+                <button id="platform-project-binding-submit" type="submit" class="platform-button">
+                  保存项目绑定
+                </button>
+              </form>
+            </article>
+
+            <p id="platform-projects-empty" class="platform-empty-state">
+              当前还没有项目工作区绑定。
+            </p>
+            <div id="platform-projects-list" class="platform-projects-list"></div>
+          </section>
+        </section>
+
+        <section id="platform-view-collaboration-runs" class="platform-view" hidden>
+          <article class="platform-panel platform-view-hero">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Workbench</p>
+                <h2>协作与 Runs</h2>
+              </div>
+              <p class="platform-panel-copy">把父任务协作、handoff 时间线和 recent runs 放在一起，方便顺着执行链路排查。</p>
+            </div>
+          </article>
+
+          <section class="platform-panel">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Collaboration</p>
+                <h2>Parent Tasks & Handoffs</h2>
+              </div>
+              <p class="platform-panel-copy">
+                当前开始由独立 `themis-platform` 页面承接父任务协作分组与 handoff 时间线，先补平台值班最常看的只读视角。
+              </p>
+            </div>
+
+            <div class="platform-summary-grid platform-summary-grid--compact-two">
+              <article class="platform-summary-card">
+                <span>父任务分组</span>
+                <strong id="platform-collaboration-total">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>当前 handoffs</span>
+                <strong id="platform-collaboration-handoffs-total">0</strong>
+              </article>
+            </div>
+
+            <p id="platform-collaboration-status" class="platform-inline-note">
+              还没有读取协作分组。
+            </p>
+            <p id="platform-collaboration-empty" class="platform-empty-state">
+              先填写 ownerPrincipalId，再读取当前平台父任务协作分组。
+            </p>
+            <div id="platform-collaboration-list" class="platform-collaboration-list"></div>
+
+            <p id="platform-handoffs-status" class="platform-inline-note">
+              还没有读取交接时间线。
+            </p>
+            <p id="platform-handoffs-empty" class="platform-empty-state">
+              选择一个父任务分组后，这里会显示当前 agent 的 handoff 时间线。
+            </p>
+            <div id="platform-handoffs-list" class="platform-handoffs-list"></div>
+          </section>
+
+          <section class="platform-panel">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Runs</p>
+                <h2>Recent Runs</h2>
+              </div>
+              <p class="platform-panel-copy">
+                当前先接入最近 runs 列表和单条 detail；后续再继续补更完整的值班诊断与协作视角。
+              </p>
+            </div>
+
+            <div class="platform-summary-grid platform-summary-grid--compact">
+              <article class="platform-summary-card">
+                <span>最近 runs</span>
+                <strong id="platform-runs-total">0</strong>
+              </article>
+            </div>
+
+            <p id="platform-runs-status" class="platform-inline-note">
+              还没有读取 runs 列表。
+            </p>
+            <p id="platform-runs-empty" class="platform-empty-state">
+              先填写 ownerPrincipalId，再读取当前平台 runs。
+            </p>
+            <div id="platform-runs-list" class="platform-runs-list"></div>
+            <div id="platform-run-detail" class="platform-run-detail"></div>
+          </section>
+        </section>
+
+        <section id="platform-view-overview" class="platform-view" hidden>
+          <article class="platform-panel platform-view-hero">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Workbench</p>
+                <h2>平台概览</h2>
+              </div>
+              <p class="platform-panel-copy">这里保留 ownerPrincipalId、会话说明和刷新入口，作为当前工作台的接入页。</p>
+            </div>
+          </article>
+
+          <section class="platform-panel">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Access</p>
+                <h2>平台 ownerPrincipalId</h2>
               </div>
             </div>
 
-            <form id="platform-agent-create-form" class="platform-action-grid">
-              <label class="platform-field">
-                <span>departmentRole</span>
-                <input
-                  id="platform-agent-create-role-input"
-                  type="text"
-                  placeholder="例如：Platform"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-              </label>
-              <label class="platform-field">
-                <span>displayName</span>
-                <input
-                  id="platform-agent-create-name-input"
-                  type="text"
-                  placeholder="例如：平台值班员"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-              </label>
-              <label class="platform-field platform-field--span-full">
-                <span>mission</span>
-                <textarea
-                  id="platform-agent-create-mission-input"
-                  rows="3"
-                  placeholder="例如：负责平台控制面最小治理。"
-                ></textarea>
-              </label>
-              <button id="platform-agent-create-submit" type="submit" class="platform-button">创建 agent</button>
-            </form>
-          </article>
-
-          <div class="platform-split-grid">
-            <div>
-              <p id="platform-agents-empty" class="platform-empty-state">
-                先填写 ownerPrincipalId，再读取当前平台 agents。
-              </p>
-              <div id="platform-agents-list" class="platform-agents-list"></div>
-            </div>
-            <div id="platform-agent-detail" class="platform-card-detail"></div>
-          </div>
-
-          <article class="platform-form-card platform-form-card--secondary">
-            <div class="platform-form-head">
-              <div>
-                <p class="platform-panel-kicker">Project Binding</p>
-                <h3>项目工作区绑定</h3>
-              </div>
-            </div>
-
-            <form id="platform-project-binding-form" class="platform-action-grid">
-              <label class="platform-field">
-                <span>projectId</span>
-                <input
-                  id="platform-project-binding-project-input"
-                  type="text"
-                  placeholder="例如：project-site-foo"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-              </label>
-              <label class="platform-field">
-                <span>organizationId</span>
-                <input
-                  id="platform-project-binding-organization-input"
-                  type="text"
-                  placeholder="例如：org-platform"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-              </label>
-              <label class="platform-field">
-                <span>displayName</span>
-                <input
-                  id="platform-project-binding-display-input"
-                  type="text"
-                  placeholder="例如：官网 site-foo"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-              </label>
-              <label class="platform-field">
-                <span>workspacePath</span>
-                <input
-                  id="platform-project-binding-workspace-input"
-                  type="text"
-                  placeholder="例如：/srv/platform-alpha"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-              </label>
-              <label class="platform-field">
-                <span>preferredNodeId</span>
-                <input
-                  id="platform-project-binding-node-input"
-                  type="text"
-                  placeholder="例如：node-alpha"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-              </label>
-              <label class="platform-field">
-                <span>continuityMode</span>
-                <select id="platform-project-binding-mode-select">
-                  <option value="sticky">sticky</option>
-                  <option value="replicated">replicated</option>
-                </select>
-              </label>
-              <button id="platform-project-binding-submit" type="submit" class="platform-button">
-                保存项目绑定
-              </button>
-            </form>
-          </article>
-
-          <p id="platform-projects-empty" class="platform-empty-state">
-            当前还没有项目工作区绑定。
-          </p>
-          <div id="platform-projects-list" class="platform-projects-list"></div>
-        </section>
-
-        <section class="platform-panel">
-          <div class="platform-panel-head">
-            <div>
-              <p class="platform-panel-kicker">Collaboration</p>
-              <h2>Parent Tasks & Handoffs</h2>
-            </div>
             <p class="platform-panel-copy">
-              当前开始由独立 `themis-platform` 页面承接父任务协作分组与 handoff 时间线，先补平台值班最常看的只读视角。
+              当前首版平台页会按 `ownerPrincipalId` 拉取节点总览和最小治理摘要。你可以手动填写，也可以从主 Themis
+              的兼容入口跳转过来。
             </p>
-          </div>
 
-          <div class="platform-summary-grid platform-summary-grid--compact-two">
-            <article class="platform-summary-card">
-              <span>父任务分组</span>
-              <strong id="platform-collaboration-total">0</strong>
-            </article>
-            <article class="platform-summary-card">
-              <span>当前 handoffs</span>
-              <strong id="platform-collaboration-handoffs-total">0</strong>
-            </article>
-          </div>
-
-          <p id="platform-collaboration-status" class="platform-inline-note">
-            还没有读取协作分组。
-          </p>
-          <p id="platform-collaboration-empty" class="platform-empty-state">
-            先填写 ownerPrincipalId，再读取当前平台父任务协作分组。
-          </p>
-          <div id="platform-collaboration-list" class="platform-collaboration-list"></div>
-
-          <p id="platform-handoffs-status" class="platform-inline-note">
-            还没有读取交接时间线。
-          </p>
-          <p id="platform-handoffs-empty" class="platform-empty-state">
-            选择一个父任务分组后，这里会显示当前 agent 的 handoff 时间线。
-          </p>
-          <div id="platform-handoffs-list" class="platform-handoffs-list"></div>
-        </section>
-
-        <section class="platform-panel">
-          <div class="platform-panel-head">
-            <div>
-              <p class="platform-panel-kicker">Runs</p>
-              <h2>Recent Runs</h2>
-            </div>
-            <p class="platform-panel-copy">
-              当前先接入最近 runs 列表和单条 detail；后续再继续补更完整的值班诊断与协作视角。
-            </p>
-          </div>
-
-          <div class="platform-summary-grid platform-summary-grid--compact">
-            <article class="platform-summary-card">
-              <span>最近 runs</span>
-              <strong id="platform-runs-total">0</strong>
-            </article>
-          </div>
-
-          <p id="platform-runs-status" class="platform-inline-note">
-            还没有读取 runs 列表。
-          </p>
-          <p id="platform-runs-empty" class="platform-empty-state">
-            先填写 ownerPrincipalId，再读取当前平台 runs。
-          </p>
-          <div id="platform-runs-list" class="platform-runs-list"></div>
-          <div id="platform-run-detail" class="platform-run-detail"></div>
+            <form id="platform-owner-form" class="platform-owner-form">
+              <label class="platform-field">
+                <span>ownerPrincipalId</span>
+                <input
+                  id="platform-owner-input"
+                  type="text"
+                  placeholder="例如：principal-platform-owner"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <button id="platform-owner-submit" type="submit" class="platform-button">加载节点</button>
+            </form>
+          </section>
         </section>
       </main>
     </div>

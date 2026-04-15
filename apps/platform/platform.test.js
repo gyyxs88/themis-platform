@@ -32,6 +32,46 @@ test("summarizeNodes 会汇总在线、排水中和离线节点数量", () => {
   });
 });
 
+test("initializePlatformSurface 默认进入节点与值班并支持切换 view", async () => {
+  const document = createDocumentStub();
+  const surface = initializePlatformSurface({
+    document,
+    fetch: async (url) => {
+      if (url === "/api/web-auth/status") {
+        return createJsonResponse(200, { authenticated: false, tokenLabel: "" });
+      }
+
+      return createJsonResponse(200, {
+        nodes: [],
+        runs: [],
+        workItems: [],
+        items: [],
+        summary: {},
+        managerHotspots: [],
+        parents: [],
+      });
+    },
+    storage: {
+      getItem() {
+        return "principal-owner";
+      },
+      setItem() {},
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(document.getElementById("platform-view-nodes-oncall").hidden, false);
+  assert.equal(document.getElementById("platform-view-overview").hidden, true);
+  assert.equal(document.getElementById("platform-nav-nodes-oncall").dataset.selected, "true");
+
+  surface.setActiveView("governance");
+
+  assert.equal(document.getElementById("platform-view-governance").hidden, false);
+  assert.equal(document.getElementById("platform-view-nodes-oncall").hidden, true);
+  assert.equal(document.getElementById("platform-nav-governance").dataset.selected, "true");
+});
+
 test("initializePlatformSurface 会对节点治理动作调用对应平台接口", async () => {
   const requests = [];
   const document = createDocumentStub();
@@ -793,6 +833,10 @@ function createJsonResponse(status, payload) {
   };
 }
 
+function toDatasetKey(name) {
+  return name.replace(/-([a-z])/g, (_, char) => char.toUpperCase());
+}
+
 function createDocumentStub() {
   const elements = new Map();
 
@@ -802,10 +846,47 @@ function createDocumentStub() {
     hidden: false,
     disabled: false,
     innerHTML: "",
+    dataset: {},
+    attributes: new Map(),
     addEventListener() {},
+    setAttribute(name, value) {
+      const normalized = String(value);
+      this.attributes.set(name, normalized);
+
+      if (name.startsWith("data-")) {
+        this.dataset[toDatasetKey(name.slice(5))] = normalized;
+      }
+    },
+    getAttribute(name) {
+      if (this.attributes.has(name)) {
+        return this.attributes.get(name);
+      }
+
+      if (name.startsWith("data-")) {
+        return this.dataset[toDatasetKey(name.slice(5))] ?? null;
+      }
+
+      return null;
+    },
   });
 
   const ids = [
+    "platform-sidebar",
+    "platform-nav-toggle",
+    "platform-nav-nodes-oncall",
+    "platform-nav-governance",
+    "platform-nav-work-items",
+    "platform-nav-mailbox",
+    "platform-nav-agents-projects",
+    "platform-nav-collaboration-runs",
+    "platform-nav-overview",
+    "platform-view-nodes-oncall",
+    "platform-view-governance",
+    "platform-view-work-items",
+    "platform-view-mailbox",
+    "platform-view-agents-projects",
+    "platform-view-collaboration-runs",
+    "platform-view-overview",
     "platform-session-title",
     "platform-session-note",
     "platform-owner-form",

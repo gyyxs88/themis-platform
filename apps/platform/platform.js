@@ -14,6 +14,17 @@ const EMPTY_WORK_ITEM_SUMMARY = {
   queued: 0,
 };
 
+const DEFAULT_ACTIVE_VIEW = "nodes-oncall";
+const PLATFORM_VIEWS = [
+  "nodes-oncall",
+  "governance",
+  "work-items",
+  "mailbox",
+  "agents-projects",
+  "collaboration-runs",
+  "overview",
+];
+
 function createEmptyOncallSummary() {
   return {
     generatedAt: "",
@@ -88,6 +99,49 @@ export function summarizeReclaimResult(result) {
   };
 }
 
+function normalizePlatformView(value) {
+  return PLATFORM_VIEWS.includes(value) ? value : "";
+}
+
+function resolveInitialPlatformView(locationHash = "") {
+  return normalizePlatformView(
+    typeof locationHash === "string" ? locationHash.replace(/^#/, "").trim() : "",
+  ) || DEFAULT_ACTIVE_VIEW;
+}
+
+function safeSetLocationHash(nextHash) {
+  if (typeof globalThis.location === "undefined") {
+    return;
+  }
+
+  globalThis.location.hash = nextHash;
+}
+
+function applyActiveView(dom, state) {
+  const viewMap = {
+    "nodes-oncall": [dom.navNodesOncall, dom.viewNodesOncall],
+    governance: [dom.navGovernance, dom.viewGovernance],
+    "work-items": [dom.navWorkItems, dom.viewWorkItems],
+    mailbox: [dom.navMailbox, dom.viewMailbox],
+    "agents-projects": [dom.navAgentsProjects, dom.viewAgentsProjects],
+    "collaboration-runs": [dom.navCollaborationRuns, dom.viewCollaborationRuns],
+    overview: [dom.navOverview, dom.viewOverview],
+  };
+
+  for (const [viewId, [button, panel]] of Object.entries(viewMap)) {
+    const isActive = state.activeView === viewId;
+
+    if (panel) {
+      panel.hidden = !isActive;
+    }
+
+    if (button) {
+      button.dataset.selected = isActive ? "true" : "false";
+      button.setAttribute("aria-current", isActive ? "page" : "false");
+    }
+  }
+}
+
 export function initializePlatformSurface(options = {}) {
   const documentRef = options.document ?? globalThis.document;
 
@@ -98,7 +152,25 @@ export function initializePlatformSurface(options = {}) {
   const fetchFn = options.fetch ?? globalThis.fetch;
   const storage = options.storage ?? safeStorage();
   const locationSearch = options.locationSearch ?? globalThis.location?.search ?? "";
+  const locationHash = options.locationHash ?? globalThis.location?.hash ?? "";
+  const setLocationHash = options.setLocationHash ?? safeSetLocationHash;
   const dom = {
+    sidebar: documentRef.getElementById("platform-sidebar"),
+    navToggle: documentRef.getElementById("platform-nav-toggle"),
+    navNodesOncall: documentRef.getElementById("platform-nav-nodes-oncall"),
+    navGovernance: documentRef.getElementById("platform-nav-governance"),
+    navWorkItems: documentRef.getElementById("platform-nav-work-items"),
+    navMailbox: documentRef.getElementById("platform-nav-mailbox"),
+    navAgentsProjects: documentRef.getElementById("platform-nav-agents-projects"),
+    navCollaborationRuns: documentRef.getElementById("platform-nav-collaboration-runs"),
+    navOverview: documentRef.getElementById("platform-nav-overview"),
+    viewNodesOncall: documentRef.getElementById("platform-view-nodes-oncall"),
+    viewGovernance: documentRef.getElementById("platform-view-governance"),
+    viewWorkItems: documentRef.getElementById("platform-view-work-items"),
+    viewMailbox: documentRef.getElementById("platform-view-mailbox"),
+    viewAgentsProjects: documentRef.getElementById("platform-view-agents-projects"),
+    viewCollaborationRuns: documentRef.getElementById("platform-view-collaboration-runs"),
+    viewOverview: documentRef.getElementById("platform-view-overview"),
     sessionTitle: documentRef.getElementById("platform-session-title"),
     sessionNote: documentRef.getElementById("platform-session-note"),
     ownerForm: documentRef.getElementById("platform-owner-form"),
@@ -210,6 +282,8 @@ export function initializePlatformSurface(options = {}) {
   };
   const state = {
     loading: false,
+    activeView: resolveInitialPlatformView(locationHash),
+    navExpanded: false,
     actionNodeId: "",
     loadErrorMessage: "",
     actionMessage: "",
@@ -278,7 +352,30 @@ export function initializePlatformSurface(options = {}) {
     dom.projectBindingModeSelect.value = "sticky";
   }
 
+  function setActiveView(nextView) {
+    const normalized = normalizePlatformView(nextView) || DEFAULT_ACTIVE_VIEW;
+    state.activeView = normalized;
+    state.navExpanded = false;
+    setLocationHash(`#${normalized}`);
+    render();
+  }
+
+  function toggleNavigation() {
+    state.navExpanded = !state.navExpanded;
+    render();
+  }
+
   const render = () => {
+    applyActiveView(dom, state);
+
+    if (dom.sidebar) {
+      dom.sidebar.dataset.expanded = state.navExpanded ? "true" : "false";
+    }
+
+    if (dom.navToggle) {
+      dom.navToggle.textContent = state.navExpanded ? "收起导航" : "展开导航";
+    }
+
     const nodeSummary = summarizeNodes(state.nodes);
     const oncallSummary = normalizeOncallSummary(state.oncallSummary);
     const governanceSummary = normalizeGovernanceSummary(state.governanceOverview?.summary);
@@ -1674,6 +1771,38 @@ export function initializePlatformSurface(options = {}) {
     void loadPlatformData();
   });
 
+  dom.navToggle?.addEventListener("click", () => {
+    toggleNavigation();
+  });
+
+  dom.navNodesOncall?.addEventListener("click", () => {
+    setActiveView("nodes-oncall");
+  });
+
+  dom.navGovernance?.addEventListener("click", () => {
+    setActiveView("governance");
+  });
+
+  dom.navWorkItems?.addEventListener("click", () => {
+    setActiveView("work-items");
+  });
+
+  dom.navMailbox?.addEventListener("click", () => {
+    setActiveView("mailbox");
+  });
+
+  dom.navAgentsProjects?.addEventListener("click", () => {
+    setActiveView("agents-projects");
+  });
+
+  dom.navCollaborationRuns?.addEventListener("click", () => {
+    setActiveView("collaboration-runs");
+  });
+
+  dom.navOverview?.addEventListener("click", () => {
+    setActiveView("overview");
+  });
+
   dom.nodesList?.addEventListener("click", (event) => {
     const actionButton = event.target instanceof HTMLElement
       ? event.target.closest("[data-platform-node-action]")
@@ -1869,6 +1998,8 @@ export function initializePlatformSurface(options = {}) {
     respondMailbox,
     selectMailboxEntry,
     updateNodeStatus,
+    setActiveView,
+    toggleNavigation,
     render,
   };
 }
