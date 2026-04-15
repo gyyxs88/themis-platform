@@ -569,6 +569,14 @@ export function createInMemoryPlatformWorkflowService(
   function listAllWorkItemContexts(ownerPrincipalId: string): PlatformWorkItemContext[] {
     const results = new Map<string, PlatformWorkItemContext>();
 
+    for (const context of workItemContexts.values()) {
+      if (context.ownerPrincipalId === ownerPrincipalId) {
+        results.set(context.workItem.workItemId, cloneWorkItemContext(context));
+      }
+    }
+
+    // Assigned runs carry the freshest execution status and must override any stale
+    // seed/snapshot work-item context that still reflects the pre-execution state.
     for (const assignedRun of options.workerRunService.listAssignedRuns({ ownerPrincipalId })) {
       results.set(assignedRun.workItem.workItemId, {
         ownerPrincipalId,
@@ -576,12 +584,6 @@ export function createInMemoryPlatformWorkflowService(
         targetAgent: { ...assignedRun.targetAgent },
         workItem: { ...assignedRun.workItem },
       });
-    }
-
-    for (const context of workItemContexts.values()) {
-      if (context.ownerPrincipalId === ownerPrincipalId) {
-        results.set(context.workItem.workItemId, cloneWorkItemContext(context));
-      }
     }
 
     return Array.from(results.values());

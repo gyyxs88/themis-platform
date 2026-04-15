@@ -200,6 +200,96 @@ test("PlatformWorkflowService 会提供 work-items 与 mailbox 最小读写闭�
   assert.equal(mailboxRespond?.resumedRuns[0]?.status, "interrupted");
 });
 
+test("PlatformWorkflowService 会优先返回 assigned run 上的最新 work-item 状态", () => {
+  const organization = buildOrganization();
+  const agent = buildAgent("agent-alpha", "平台联调");
+  const nodeService = createInMemoryPlatformNodeService({
+    organizations: [organization],
+  });
+  const workerRunService = createInMemoryPlatformWorkerRunService({
+    nodeService,
+    assignedRuns: [{
+      organization,
+      node: {
+        nodeId: "node-alpha",
+        organizationId: organization.organizationId,
+        displayName: "Worker Alpha",
+        status: "online",
+        slotCapacity: 1,
+        slotAvailable: 1,
+        createdAt: "2026-04-14T09:30:00.000Z",
+        updatedAt: "2026-04-14T09:30:00.000Z",
+      },
+      targetAgent: agent,
+      workItem: {
+        workItemId: "work-item-platform-1",
+        organizationId: organization.organizationId,
+        targetAgentId: agent.agentId,
+        sourceType: "human",
+        goal: "确认主链联调状态",
+        status: "completed",
+        priority: "low",
+        createdAt: "2026-04-14T14:33:27.705Z",
+        updatedAt: "2026-04-14T14:33:28.564Z",
+      },
+      run: {
+        runId: "run-platform-1",
+        organizationId: organization.organizationId,
+        workItemId: "work-item-platform-1",
+        nodeId: "node-alpha",
+        status: "completed",
+        createdAt: "2026-04-14T14:33:28.534Z",
+        updatedAt: "2026-04-14T14:33:28.564Z",
+      },
+      executionLease: {
+        leaseId: "lease-platform-1",
+        runId: "run-platform-1",
+        nodeId: "node-alpha",
+        workItemId: "work-item-platform-1",
+        leaseToken: "lease-token-platform-1",
+        status: "released",
+        createdAt: "2026-04-14T14:33:28.534Z",
+        updatedAt: "2026-04-14T14:33:28.564Z",
+      },
+      executionContract: {
+        workspacePath: "/srv/platform-alpha",
+      },
+    }],
+  });
+  const workflowService = createInMemoryPlatformWorkflowService({
+    workerRunService,
+    workItemSeeds: [{
+      ownerPrincipalId: organization.ownerPrincipalId,
+      organization,
+      targetAgent: agent,
+      workItem: {
+        workItemId: "work-item-platform-1",
+        organizationId: organization.organizationId,
+        targetAgentId: agent.agentId,
+        sourceType: "human",
+        goal: "确认主链联调状态",
+        status: "queued",
+        priority: "low",
+        createdAt: "2026-04-14T14:33:27.705Z",
+        updatedAt: "2026-04-14T14:33:27.705Z",
+      },
+    }],
+  });
+
+  const listPayload = workflowService.listWorkItems({
+    ownerPrincipalId: organization.ownerPrincipalId,
+  });
+  assert.equal(listPayload.workItems?.[0]?.workItemId, "work-item-platform-1");
+  assert.equal(listPayload.workItems?.[0]?.status, "completed");
+
+  const detailPayload = workflowService.getWorkItemDetail({
+    ownerPrincipalId: organization.ownerPrincipalId,
+    workItemId: "work-item-platform-1",
+  });
+  assert.equal(detailPayload?.workItem.status, "completed");
+  assert.equal(detailPayload?.runs?.[0]?.status, "completed");
+});
+
 function buildOrganization() {
   return {
     organizationId: "org-platform",

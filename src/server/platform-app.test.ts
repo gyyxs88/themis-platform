@@ -1087,6 +1087,24 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
     assert.equal(completePayload.workItem?.status, "completed");
     assert.equal(completePayload.executionLease?.status, "released");
 
+    const workItemsListAfterComplete = await fetch(`${baseUrl}/api/platform/work-items/list`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+      }),
+    });
+    assert.equal(workItemsListAfterComplete.status, 200);
+    const workItemsListAfterCompletePayload = await workItemsListAfterComplete.json() as {
+      workItems?: Array<{ workItemId?: string; status?: string }>;
+    };
+    const completedWorkItem = workItemsListAfterCompletePayload.workItems?.find(
+      (item) => item?.workItemId === "work-item-alpha",
+    );
+    assert.equal(completedWorkItem?.status, "completed");
+
     const blocked = await fetch(`${baseUrl}/api/runtime/config`);
     assert.equal(blocked.status, 404);
     assert.deepEqual(await blocked.json(), {
