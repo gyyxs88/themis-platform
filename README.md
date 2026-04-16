@@ -1,13 +1,12 @@
 # themis-platform
 
-这是由 `scripts/bootstrap-split-repos.sh` 初始化出来的拆仓仓库。
+`themis-platform` 是 Themis 的平台控制面与平台后台。
 
-负责平台控制面、平台页面、节点/租约/调度/值班治理。
+负责平台页面、节点/租约/调度/值班治理，以及 `/api/platform/*` 控制面接口。
 
 - 当前入口：`src/server/platform-main.ts`
 - 独立 CLI：仓库根目录 `./themis-platform`
-- 当前状态：已落入最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 最小 agents 控制面、`projects/workspace-binding/list|detail|upsert` 最小 projects 控制面、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 最小治理读面、`oncall/summary` 值班建议读面、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、最小 `Web Access + Platform Service Bearer` 鉴权链，以及 `worker/runs/pull|update|complete` 的首版自动调度执行链路；当前 `worker pull` 已能把 `queued work-item` 结合项目工作区绑定自动分配成新 `run + execution lease`，并继续通过 `file:../themis-contracts` 消费共享 access / worker / agents / collaboration / projects / work-items / oncall 契约
-- 迁移依据：请对照 `themis` 主仓里的 `docs/repository/themis-three-layer-split-migration-checklist.md`
+- 当前状态：已具备最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 控制面、`projects/workspace-binding/list|detail|upsert` 项目绑定、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 治理读面、`oncall/summary` 值班建议、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`Web Access + Platform Service Bearer` 鉴权链，以及 `worker/runs/pull|update|complete` 自动调度执行链路；当前 `worker pull` 已能把 `queued work-item` 结合项目工作区绑定自动分配成新 `run + execution lease`
 
 当前最小能力：
 
@@ -31,12 +30,12 @@
 
 ## 部署前提
 
-- 当前仓仍通过 `file:../themis-contracts` 依赖共享契约；真实部署时需要把 `themis-contracts` 作为 sibling repo 放到同一级目录，再执行 `npm ci`。
+- 当前仓仍通过 `file:../themis-contracts` 依赖共享契约；真实部署时需要把 `themis-contracts` 放到同级目录，再执行 `npm ci`。
 - `src/server/platform-main.ts` 现在会先读取仓库根目录 `.env/.env.local`，并按 `THEMIS_HOST` / `THEMIS_PORT` 启动；默认监听已改成 `0.0.0.0:3100`，不再固定写死 `127.0.0.1:3200`。
 - 平台 Web 登录口令当前通过环境变量 `THEMIS_PLATFORM_WEB_ACCESS_TOKEN`（可选 `THEMIS_PLATFORM_WEB_ACCESS_TOKEN_LABEL`）提供；平台服务 Bearer token 仍由 `infra/local/platform-service-tokens.json` 承载。
-- 独立平台仓当前还支持本地 runtime snapshot：`src/server/platform-main.ts` 会默认把 `nodes / control-plane / workflow / worker-runs` 状态落到 `infra/platform/runtime-state.json`；如需自定义路径，可配置 `THEMIS_PLATFORM_RUNTIME_SNAPSHOT_FILE`。
-- 独立平台仓当前也支持本地 execution runtime store：`src/server/platform-main.ts` 会默认把每个 run 的 `assigned-run / state / events` 写到 `infra/platform/runtime-runs/`；如需自定义路径，可配置 `THEMIS_PLATFORM_EXECUTION_RUNTIME_ROOT`。
-- 独立平台仓当前已支持 `THEMIS_PLATFORM_CONTROL_PLANE_DRIVER=mysql`：会把本地 shared cache SQLite 放到 `THEMIS_MANAGED_AGENT_CONTROL_PLANE_DATABASE_FILE`（默认 `infra/platform/control-plane.db`），并通过 `src/server/platform-control-plane-mirror.ts` 在 `shared cache SQLite + MySQL shared snapshot store` 之间做 bootstrap / flush / rollback。
+- 当前支持本地 runtime snapshot：`src/server/platform-main.ts` 会默认把 `nodes / control-plane / workflow / worker-runs` 状态落到 `infra/platform/runtime-state.json`；如需自定义路径，可配置 `THEMIS_PLATFORM_RUNTIME_SNAPSHOT_FILE`。
+- 当前支持本地 execution runtime store：`src/server/platform-main.ts` 会默认把每个 run 的 `assigned-run / state / events` 写到 `infra/platform/runtime-runs/`；如需自定义路径，可配置 `THEMIS_PLATFORM_EXECUTION_RUNTIME_ROOT`。
+- 当前已支持 `THEMIS_PLATFORM_CONTROL_PLANE_DRIVER=mysql`：会把本地 shared cache SQLite 放到 `THEMIS_MANAGED_AGENT_CONTROL_PLANE_DATABASE_FILE`（默认 `infra/platform/control-plane.db`），并通过 `src/server/platform-control-plane-mirror.ts` 在 `shared cache SQLite + MySQL shared snapshot store` 之间做 bootstrap / flush / rollback。
 - 平台常驻建议直接使用根目录 `./themis-platform` 或 `npm run start:platform`，不要再借主仓 `./themis` 的兼容入口。
 - 平台机本地运行态会写入 `infra/local/` 与 `infra/platform/`，这两个目录已经加入 `.gitignore`，不应纳入版本控制。
 
@@ -54,13 +53,13 @@
 当前边界：
 
 - `auth platform` 首版当前使用本地 `infra/local/platform-service-tokens.json` 保存平台服务令牌元数据，后续再和平台持久化控制面打通。
-- `doctor worker-fleet` 与 `worker-fleet` 已迁入独立平台仓，但当前仍只覆盖最小节点值班与治理闭环。
+- `doctor worker-fleet` 与 `worker-fleet` 当前只覆盖最小节点值班与治理闭环。
 - 当前治理页已覆盖最小 `agents + projects + governance-overview + waiting/list + collaboration-dashboard + handoffs/list + oncall/summary + work-items + mailbox + recent runs`。
 - 当前 `platform-main` 已具备真实部署入口、最小 `Web Access + Bearer` 鉴权语义，以及 `mysql` driver 下的 `shared cache SQLite + MySQL shared snapshot store` wiring；平台写动作与 scheduler tick 现在都会先更新本地服务态，再把 shared snapshot flush 到本地 cache 与 MySQL，flush 失败时也会恢复本地 shared cache 和内存态。
 - 当前 scheduler/runtime 主链已补入第一刀：`worker pull` 会根据节点所属组织挑选最高优先级 `queued work-item`，并优先使用 `projects/workspace-binding` 里的 `lastActiveWorkspacePath / canonicalWorkspacePath` 生成执行合同；这条调度主链现在也会跟随 shared snapshot 一起进入本地 shared cache 与 MySQL mirror。
 - 当前 scheduler/runtime 主链已补入第二刀：`platform-main` 现在会按 `THEMIS_PLATFORM_SCHEDULER_INTERVAL_MS` 定期运行 `scheduler tick`，自动回收 `offline / draining` 节点上的 active lease，并把对应 work-item 重新排回 `queued`，供后续在线节点重新拉取；reclaim 后的控制面事实也会一起进入本地 shared cache 与 MySQL mirror。
 - 当前 runtime 持久化已补入第一刀：平台路由上的状态变更现在会触发本地 snapshot 落盘，`platform-main` 重启后也会从 `runtime-state.json` 恢复 `nodes / control-plane / workflow / worker-runs` 这四束平台事实。
 - 当前 runtime store / execution runtime 已补入第二刀：`worker/runs/pull|update|complete` 与 `scheduler tick reclaim` 现在都会把每个 run 的 `assigned-run.json / state.json / events.ndjson` 写入 `infra/platform/runtime-runs/`。
-- 当前 `6.1.c` 代码主线已收口：独立平台仓已经同时具备 `worker pull 自动调度`、`scheduler tick reclaim`、`runtime snapshot`、`execution runtime store` 和 `shared cache SQLite + MySQL mirror flush`；后续重点已从“补独立平台仓缺失主链”转到“真实主机切换与联调验收”。
+- 当前最小执行与持久化主链已经具备：平台仓已同时支持 `worker pull 自动调度`、`scheduler tick reclaim`、`runtime snapshot`、`execution runtime store` 和 `shared cache SQLite + MySQL mirror flush`。
 
-下一步应优先转到真实主机切换与联调验收，把当前 `mysql driver + shared cache SQLite + mirror flush` 这套 wiring 真正跑到平台机上，再视实机结果决定是否继续把 token 元数据和更细粒度控制面对象下沉到同一持久化控制面。
+后续重点是继续收口真实持久化控制面、令牌元数据与更细粒度治理对象。

@@ -2,6 +2,7 @@
   "name": "themis-platform",
   "version": "0.1.0",
   "private": true,
+  "description": "Themis platform control plane and operations surface for nodes, scheduling, governance, and on-call workflows.",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
