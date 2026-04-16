@@ -3,6 +3,7 @@ import { once } from "node:events";
 import test from "node:test";
 import { createPlatformApp } from "./platform-app.js";
 import { createInMemoryPlatformCollaborationService } from "./platform-collaboration-service.js";
+import { createInMemoryPlatformGovernanceService } from "./platform-governance-service.js";
 import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformWorkerRunService } from "./platform-worker-run-service.js";
 import { createInMemoryPlatformWorkflowService } from "./platform-workflow-service.js";
@@ -360,9 +361,14 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
       },
     }],
   });
+  const governanceService = createInMemoryPlatformGovernanceService({
+    workerRunService,
+    now: () => "2026-04-14T09:40:00.000Z",
+  });
   const server = createPlatformApp({
     nodeService,
     workerRunService,
+    governanceService,
     collaborationService,
     workflowService,
   });

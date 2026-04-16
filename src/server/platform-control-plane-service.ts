@@ -13,6 +13,7 @@ import type {
 } from "themis-contracts/managed-agent-platform-agents";
 import type {
   ManagedAgentPlatformAgentRecord,
+  ManagedAgentPlatformAgentCardRecord,
   ManagedAgentPlatformAuthAccountRecord,
   ManagedAgentPlatformOrganizationRecord,
   ManagedAgentPlatformPrincipalRecord,
@@ -110,7 +111,7 @@ export function createInMemoryPlatformControlPlaneService(
     ownerStates.set(normalizeText(owner.ownerPrincipalId), {
       organizations: new Map(owner.organizations.map((organization) => [organization.organizationId, { ...organization }])),
       principals: new Map(owner.principals.map((principal) => [principal.principalId, { ...principal }])),
-      agents: new Map(owner.agents.map((agent) => [agent.agentId, { ...agent }])),
+      agents: new Map(owner.agents.map((agent) => [agent.agentId, cloneAgentRecord(agent)])),
       workspacePolicies: new Map(owner.workspacePolicies.map((policy) => [policy.agentId, cloneWorkspacePolicy(policy)])),
       runtimeProfiles: new Map(owner.runtimeProfiles.map((profile) => [profile.agentId, { ...profile }])),
       authAccounts: new Map(groupByAgentId(owner.authAccounts).map(([agentId, accounts]) => [agentId, accounts.map((account) => ({ ...account }))])),
@@ -127,7 +128,7 @@ export function createInMemoryPlatformControlPlaneService(
       ownerStates.set(normalizeText(owner.ownerPrincipalId), {
         organizations: new Map(owner.organizations.map((organization) => [organization.organizationId, { ...organization }])),
         principals: new Map(owner.principals.map((principal) => [principal.principalId, { ...principal }])),
-        agents: new Map(owner.agents.map((agent) => [agent.agentId, { ...agent }])),
+        agents: new Map(owner.agents.map((agent) => [agent.agentId, cloneAgentRecord(agent)])),
         workspacePolicies: new Map(owner.workspacePolicies.map((policy) => [policy.agentId, cloneWorkspacePolicy(policy)])),
         runtimeProfiles: new Map(owner.runtimeProfiles.map((profile) => [profile.agentId, { ...profile }])),
         authAccounts: new Map(groupByAgentId(owner.authAccounts).map(([agentId, accounts]) => [agentId, accounts.map((account) => ({ ...account }))])),
@@ -205,7 +206,7 @@ export function createInMemoryPlatformControlPlaneService(
     }
 
     const normalizedAgentId = normalizeText(agentId);
-    const agent = state.agents.get(normalizedAgentId);
+    const agent = ensureAgentCard(state, normalizedAgentId);
 
     if (!agent) {
       return null;
@@ -238,7 +239,7 @@ export function createInMemoryPlatformControlPlaneService(
           ownerPrincipalId,
           organizations: Array.from(state.organizations.values()).map((organization) => ({ ...organization })),
           principals: Array.from(state.principals.values()).map((principal) => ({ ...principal })),
-          agents: Array.from(state.agents.values()).map((agent) => ({ ...agent })),
+          agents: Array.from(state.agents.values()).map((agent) => cloneAgentRecord(agent)),
           workspacePolicies: Array.from(state.workspacePolicies.values()).map((policy) => cloneWorkspacePolicy(policy)),
           runtimeProfiles: Array.from(state.runtimeProfiles.values()).map((profile) => ({ ...profile })),
           authAccounts: Array.from(state.authAccounts.values()).flatMap((accounts) => accounts.map((account) => ({ ...account }))),
@@ -255,7 +256,9 @@ export function createInMemoryPlatformControlPlaneService(
       const state = ensureOwnerState(input.ownerPrincipalId);
       return {
         organizations: Array.from(state.organizations.values()),
-        agents: Array.from(state.agents.values()),
+        agents: Array.from(state.agents.values())
+          .map((agent) => ensureAgentCard(state, agent.agentId))
+          .filter((agent): agent is ManagedAgentPlatformAgentRecord => agent !== null),
       };
     },
 
@@ -302,6 +305,10 @@ export function createInMemoryPlatformControlPlaneService(
         createdAt: timestamp,
         updatedAt: timestamp,
       };
+      const agentWithCard: ManagedAgentPlatformAgentRecord = {
+        ...agent,
+        agentCard: buildAgentCard(state, agent),
+      };
       const workspacePolicy: ManagedAgentPlatformWorkspacePolicyRecord = {
         agentId,
         canonicalWorkspacePath: null,
@@ -318,7 +325,7 @@ export function createInMemoryPlatformControlPlaneService(
       };
 
       state.principals.set(principalId, principal);
-      state.agents.set(agentId, agent);
+      state.agents.set(agentId, agentWithCard);
       state.workspacePolicies.set(agentId, workspacePolicy);
       state.runtimeProfiles.set(agentId, runtimeProfile);
       state.authAccounts.set(agentId, []);
@@ -327,7 +334,7 @@ export function createInMemoryPlatformControlPlaneService(
       return {
         organization,
         principal,
-        agent,
+        agent: agentWithCard,
       };
     },
 
@@ -494,6 +501,117 @@ function cloneProjectBinding(
   return {
     ...binding,
   };
+}
+
+function cloneAgentRecord(
+  agent: ManagedAgentPlatformAgentRecord,
+): ManagedAgentPlatformAgentRecord {
+  return {
+    ...agent,
+    ...(agent.agentCard ? { agentCard: cloneAgentCard(agent.agentCard) } : {}),
+  };
+}
+
+function cloneAgentCard(
+  card: ManagedAgentPlatformAgentCardRecord,
+): ManagedAgentPlatformAgentCardRecord {
+  return {
+    ...card,
+    ...(card.reportLine ? { reportLine: { ...card.reportLine } } : {}),
+    domainTags: normalizeStringList(card.domainTags),
+    skillTags: normalizeStringList(card.skillTags),
+    allowedScopes: normalizeStringList(card.allowedScopes),
+    forbiddenScopes: normalizeStringList(card.forbiddenScopes),
+    representativeProjects: normalizeStringList(card.representativeProjects),
+  };
+}
+
+function ensureAgentCard(
+  state: OwnerControlPlaneState,
+  agentId: string,
+): ManagedAgentPlatformAgentRecord | null {
+  const existing = state.agents.get(agentId);
+
+  if (!existing) {
+    return null;
+  }
+
+  const nextCard = buildAgentCard(state, existing);
+  const currentCard = existing.agentCard ? JSON.stringify(existing.agentCard) : null;
+  const normalizedNextCard = JSON.stringify(nextCard);
+
+  if (currentCard === normalizedNextCard) {
+    return existing.agentCard
+      ? existing
+      : {
+        ...existing,
+        agentCard: nextCard,
+      };
+  }
+
+  const updated: ManagedAgentPlatformAgentRecord = {
+    ...existing,
+    agentCard: nextCard,
+  };
+  state.agents.set(agentId, updated);
+  return updated;
+}
+
+function buildAgentCard(
+  state: OwnerControlPlaneState,
+  agent: ManagedAgentPlatformAgentRecord,
+): ManagedAgentPlatformAgentCardRecord {
+  const currentCard = agent.agentCard;
+  const supervisorAgentId = normalizeOptionalText(agent.supervisorAgentId);
+  const supervisorAgent = supervisorAgentId ? state.agents.get(supervisorAgentId) ?? null : null;
+  const supervisorDisplayName = normalizeOptionalText(currentCard?.reportLine?.supervisorDisplayName)
+    ?? normalizeOptionalText(supervisorAgent?.displayName);
+  const reportLine = supervisorAgentId
+    ? {
+      supervisorAgentId,
+      ...(supervisorDisplayName ? { supervisorDisplayName } : {}),
+    }
+    : undefined;
+  const mission = normalizeOptionalText(agent.mission) ?? `负责 ${agent.departmentRole} 相关工作。`;
+
+  return {
+    employeeCode: normalizeOptionalText(currentCard?.employeeCode) ?? generateEmployeeCode(agent.agentId),
+    title: normalizeOptionalText(currentCard?.title) ?? agent.departmentRole,
+    ...(reportLine ? { reportLine } : {}),
+    domainTags: normalizeStringList(currentCard?.domainTags),
+    skillTags: normalizeStringList(currentCard?.skillTags),
+    responsibilitySummary: normalizeOptionalText(currentCard?.responsibilitySummary) ?? mission,
+    allowedScopes: normalizeStringList(currentCard?.allowedScopes),
+    forbiddenScopes: normalizeStringList(currentCard?.forbiddenScopes),
+    ...(normalizeOptionalText(currentCard?.workStyle) ? { workStyle: normalizeOptionalText(currentCard?.workStyle) } : {}),
+    ...(normalizeOptionalText(currentCard?.collaborationNotes)
+      ? { collaborationNotes: normalizeOptionalText(currentCard?.collaborationNotes) }
+      : {}),
+    representativeProjects: normalizeStringList(currentCard?.representativeProjects),
+    ...(normalizeOptionalText(currentCard?.currentFocus) ? { currentFocus: normalizeOptionalText(currentCard?.currentFocus) } : {}),
+    ...(normalizeOptionalText(currentCard?.reviewSummary) ? { reviewSummary: normalizeOptionalText(currentCard?.reviewSummary) } : {}),
+    ...(normalizeOptionalText(currentCard?.lastReviewedAt) ? { lastReviewedAt: normalizeOptionalText(currentCard?.lastReviewedAt) } : {}),
+    createdAt: normalizeOptionalText(currentCard?.createdAt) ?? agent.createdAt,
+    updatedAt: normalizeOptionalText(currentCard?.updatedAt) ?? agent.updatedAt,
+  };
+}
+
+function generateEmployeeCode(agentId: string): string {
+  const normalized = agentId.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  const suffix = normalized.slice(-6) || "AGENT";
+  return `EMP-${suffix}`;
+}
+
+function normalizeStringList(values: string[] | undefined): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const normalized = values
+    .map((value) => normalizeOptionalText(value))
+    .filter((value): value is string => Boolean(value));
+
+  return Array.from(new Set(normalized));
 }
 
 function groupByAgentId<T extends { agentId: string }>(records: T[]): Array<[string, T[]]> {

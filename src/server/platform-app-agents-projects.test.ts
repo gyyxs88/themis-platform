@@ -89,6 +89,18 @@ test("createPlatformApp 会暴露 agents 与 projects 最小控制面路由", as
       }),
     });
     assert.equal(detailResponse.status, 200);
+    const detail = await detailResponse.json() as {
+      agent?: {
+        agentId?: string;
+        agentCard?: {
+          title?: string;
+          responsibilitySummary?: string;
+        };
+      };
+    };
+    assert.equal(detail.agent?.agentId, "agent-alpha");
+    assert.equal(detail.agent?.agentCard?.title, "Platform");
+    assert.equal(detail.agent?.agentCard?.responsibilitySummary, "负责平台控制面最小治理。");
 
     const boundaryResponse = await fetch(`${baseUrl}/api/platform/agents/execution-boundary/update`, {
       method: "POST",
