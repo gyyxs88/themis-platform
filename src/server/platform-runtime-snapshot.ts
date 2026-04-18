@@ -19,6 +19,10 @@ import type {
   SnapshotCapablePlatformWorkflowService,
   PlatformWorkflowServiceSnapshot,
 } from "./platform-workflow-service.js";
+import type {
+  SnapshotCapablePlatformMeetingRoomService,
+  PlatformMeetingRoomServiceSnapshot,
+} from "./platform-meeting-room-service.js";
 
 export interface PlatformRuntimeSnapshot {
   version: 1;
@@ -27,6 +31,7 @@ export interface PlatformRuntimeSnapshot {
   controlPlaneService: PlatformControlPlaneServiceSnapshot;
   workerRunService: PlatformWorkerRunServiceSnapshot;
   workflowService: PlatformWorkflowServiceSnapshot;
+  meetingRoomService: PlatformMeetingRoomServiceSnapshot;
 }
 
 export interface PlatformRuntimeSnapshotServices {
@@ -34,6 +39,7 @@ export interface PlatformRuntimeSnapshotServices {
   controlPlaneService: SnapshotCapablePlatformControlPlaneService;
   workerRunService: SnapshotCapablePlatformWorkerRunService;
   workflowService: SnapshotCapablePlatformWorkflowService;
+  meetingRoomService: SnapshotCapablePlatformMeetingRoomService;
 }
 
 export interface RestorablePlatformRuntimeSnapshotServices extends PlatformRuntimeSnapshotServices {
@@ -51,6 +57,7 @@ export function exportPlatformRuntimeSnapshot(
     controlPlaneService: services.controlPlaneService.exportSnapshot(),
     workerRunService: services.workerRunService.exportSnapshot(),
     workflowService: services.workflowService.exportSnapshot(),
+    meetingRoomService: services.meetingRoomService.exportSnapshot(),
   };
 }
 
@@ -62,6 +69,7 @@ export function applyPlatformRuntimeSnapshot(
   services.controlPlaneService.replaceSnapshot(snapshot.controlPlaneService);
   services.workerRunService.replaceSnapshot(snapshot.workerRunService);
   services.workflowService.replaceSnapshot(snapshot.workflowService);
+  services.meetingRoomService.replaceSnapshot(snapshot.meetingRoomService);
   services.collaborationService.replaceSeeds({
     parentSeeds: snapshot.workflowService.parentSeeds,
     handoffSeeds: snapshot.workflowService.handoffSeeds,
@@ -91,6 +99,14 @@ export function createEmptyPlatformRuntimeSnapshot(
       parentSeeds: [],
       handoffSeeds: [],
     },
+    meetingRoomService: {
+      rooms: [],
+      participants: [],
+      rounds: [],
+      messages: [],
+      resolutions: [],
+      artifactRefs: [],
+    },
   };
 }
 
@@ -107,7 +123,13 @@ export function hasPlatformRuntimeSnapshotData(snapshot: PlatformRuntimeSnapshot
     || snapshot.workflowService.workItemSeeds.length > 0
     || snapshot.workflowService.mailboxSeeds.length > 0
     || snapshot.workflowService.parentSeeds.length > 0
-    || snapshot.workflowService.handoffSeeds.length > 0;
+    || snapshot.workflowService.handoffSeeds.length > 0
+    || snapshot.meetingRoomService.rooms.length > 0
+    || snapshot.meetingRoomService.participants.length > 0
+    || snapshot.meetingRoomService.rounds.length > 0
+    || snapshot.meetingRoomService.messages.length > 0
+    || snapshot.meetingRoomService.resolutions.length > 0
+    || snapshot.meetingRoomService.artifactRefs.length > 0;
 }
 
 export function loadPlatformRuntimeSnapshotFile(filePath: string): PlatformRuntimeSnapshot | null {

@@ -10,6 +10,7 @@ import {
   loadPlatformRuntimeSnapshotFile,
   savePlatformRuntimeSnapshotFile,
 } from "./platform-runtime-snapshot.js";
+import { createInMemoryPlatformMeetingRoomService } from "./platform-meeting-room-service.js";
 import { createInMemoryPlatformWorkerRunService } from "./platform-worker-run-service.js";
 import { createInMemoryPlatformWorkflowService } from "./platform-workflow-service.js";
 
@@ -172,6 +173,39 @@ test("platform runtime snapshot 会保存并恢复 nodes/control-plane/workflow/
       organization: created.organization,
       agent: created.agent,
     });
+    const meetingRoomService = createInMemoryPlatformMeetingRoomService({
+      controlPlaneService,
+      workflowService,
+      now: () => "2026-04-14T10:03:00.000Z",
+      generateRoomId: () => "meeting-room-a",
+      generateParticipantId: (() => {
+        let count = 0;
+        return () => `meeting-participant-${++count}`;
+      })(),
+      generateResolutionId: () => "meeting-resolution-a",
+    });
+    const meetingRoom = meetingRoomService.createRoom({
+      ownerPrincipalId: "principal-owner",
+      room: {
+        title: "Persist meeting",
+        goal: "Persist meeting state",
+        operatorPrincipalId: "principal-owner",
+        organizationId: "org-platform",
+        participants: [{
+          agentId: created.agent.agentId,
+          entryMode: "blank",
+        }],
+      },
+    });
+    meetingRoomService.createResolution({
+      ownerPrincipalId: "principal-owner",
+      resolution: {
+        roomId: meetingRoom.room.roomId,
+        sourceMessageIds: [],
+        title: "推进方案",
+        summary: "继续排查并补充回滚预案。",
+      },
+    });
     controlPlaneService.upsertProjectWorkspaceBinding({
       ownerPrincipalId: "principal-owner",
       binding: {
@@ -199,6 +233,7 @@ test("platform runtime snapshot 会保存并恢复 nodes/control-plane/workflow/
       controlPlaneService,
       workerRunService,
       workflowService,
+      meetingRoomService,
     }, () => "2026-04-14T11:00:00.000Z"));
 
     const snapshot = loadPlatformRuntimeSnapshotFile(snapshotFile);
@@ -222,6 +257,11 @@ test("platform runtime snapshot 会保存并恢复 nodes/control-plane/workflow/
     });
     const restoredControlPlaneService = createInMemoryPlatformControlPlaneService({
       snapshot: snapshot?.controlPlaneService,
+    });
+    const restoredMeetingRoomService = createInMemoryPlatformMeetingRoomService({
+      controlPlaneService: restoredControlPlaneService,
+      workflowService: restoredWorkflowService,
+      snapshot: snapshot?.meetingRoomService,
     });
 
     assert.equal(restoredNodeService.listNodes({ ownerPrincipalId: "principal-owner" }).length, 1);
@@ -251,6 +291,13 @@ test("platform runtime snapshot 会保存并恢复 nodes/control-plane/workflow/
         ownerPrincipalId: "principal-owner",
         agentId: "agent-queued",
       })?.items.length,
+      1,
+    );
+    assert.equal(
+      restoredMeetingRoomService.getRoomDetail({
+        ownerPrincipalId: "principal-owner",
+        roomId: "meeting-room-a",
+      })?.resolutions.length,
       1,
     );
   } finally {

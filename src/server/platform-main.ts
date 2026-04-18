@@ -7,6 +7,7 @@ import { createInMemoryPlatformCollaborationService } from "./platform-collabora
 import { createInMemoryPlatformControlPlaneService } from "./platform-control-plane-service.js";
 import { createLocalPlatformExecutionRuntimeStore } from "./platform-execution-runtime-store.js";
 import { createInMemoryPlatformGovernanceService } from "./platform-governance-service.js";
+import { createInMemoryPlatformMeetingRoomService } from "./platform-meeting-room-service.js";
 import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformOncallService } from "./platform-oncall-service.js";
 import { createPlatformApp } from "./platform-app.js";
@@ -143,6 +144,11 @@ export async function createPlatformServerFromEnv(
   const controlPlaneService = createInMemoryPlatformControlPlaneService({
     snapshot: initialSnapshot?.controlPlaneService,
   });
+  const meetingRoomService = createInMemoryPlatformMeetingRoomService({
+    controlPlaneService,
+    workflowService,
+    snapshot: initialSnapshot?.meetingRoomService,
+  });
   const oncallService = createInMemoryPlatformOncallService({
     nodeService,
     governanceService,
@@ -163,6 +169,7 @@ export async function createPlatformServerFromEnv(
     controlPlaneService,
     workerRunService,
     workflowService,
+    meetingRoomService,
   };
   const restorableServices = {
     ...snapshotServices,
