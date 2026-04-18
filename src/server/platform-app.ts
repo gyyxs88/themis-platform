@@ -44,6 +44,18 @@ import type {
   ManagedAgentPlatformProjectWorkspaceBindingListPayload,
   ManagedAgentPlatformProjectWorkspaceBindingUpsertPayload,
 } from "themis-contracts/managed-agent-platform-projects";
+import type {
+  ManagedAgentPlatformMeetingRoomAppendFailurePayload,
+  ManagedAgentPlatformMeetingRoomAppendReplyPayload,
+  ManagedAgentPlatformMeetingRoomClosePayload,
+  ManagedAgentPlatformMeetingRoomCreatePayload,
+  ManagedAgentPlatformMeetingRoomCreateResolutionPayload,
+  ManagedAgentPlatformMeetingRoomDetailPayload,
+  ManagedAgentPlatformMeetingRoomListPayload,
+  ManagedAgentPlatformMeetingRoomMessageCreatePayload,
+  ManagedAgentPlatformMeetingRoomParticipantsAddPayload,
+  ManagedAgentPlatformMeetingRoomPromoteResolutionPayload,
+} from "themis-contracts/managed-agent-platform-meetings";
 import type { ManagedAgentPlatformOncallSummaryPayload } from "themis-contracts/managed-agent-platform-oncall";
 import type { ManagedAgentPlatformWorkItemRecord } from "themis-contracts/managed-agent-platform-shared";
 import { readPlatformAsset } from "./platform-assets.js";
@@ -56,6 +68,10 @@ import {
   type PlatformControlPlaneService,
 } from "./platform-control-plane-service.js";
 import { createInMemoryPlatformGovernanceService, type PlatformGovernanceService } from "./platform-governance-service.js";
+import {
+  createInMemoryPlatformMeetingRoomService,
+  type PlatformMeetingRoomService,
+} from "./platform-meeting-room-service.js";
 import {
   createInMemoryPlatformNodeService,
   type PlatformNodeExecutionLeaseRuntime,
@@ -91,6 +107,7 @@ export interface PlatformAppOptions {
   collaborationService?: PlatformCollaborationService;
   workflowService?: PlatformWorkflowService;
   controlPlaneService?: PlatformControlPlaneService;
+  meetingRoomService?: PlatformMeetingRoomService;
   oncallService?: PlatformOncallService;
   webAuthTokenLabel?: string;
   authService?: PlatformWebAccessService;
@@ -116,6 +133,10 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
     workerRunService,
   });
   const controlPlaneService = options.controlPlaneService ?? createInMemoryPlatformControlPlaneService();
+  const meetingRoomService = options.meetingRoomService ?? createInMemoryPlatformMeetingRoomService({
+    controlPlaneService,
+    workflowService,
+  });
   const oncallService = options.oncallService ?? createInMemoryPlatformOncallService({
     nodeService,
     governanceService,
@@ -143,6 +164,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       collaborationService,
       workflowService,
       controlPlaneService,
+      meetingRoomService,
       oncallService,
       webAuthTokenLabel,
       authService,
@@ -163,6 +185,7 @@ interface HandlePlatformRequestOptions {
   collaborationService: PlatformCollaborationService;
   workflowService: PlatformWorkflowService;
   controlPlaneService: PlatformControlPlaneService;
+  meetingRoomService: PlatformMeetingRoomService;
   oncallService: PlatformOncallService;
   webAuthTokenLabel: string;
   authService: PlatformWebAccessService | null;
@@ -514,6 +537,127 @@ async function handlePlatformRequest(
         return;
       }
       return writeJson(response, 200, options.workflowService.listWorkItems(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/list") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomListPayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      return writeJson(response, 200, options.meetingRoomService.listRooms(payload));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/create") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomCreatePayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.meetingRoomService.createRoom(payload);
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/detail") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomDetailPayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.meetingRoomService.getRoomDetail(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Meeting room ${payload.roomId ?? "unknown"} not found.`));
+      }
+      return writeJson(response, 200, result);
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/participants/add") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomParticipantsAddPayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.meetingRoomService.addParticipants(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Meeting room ${payload.roomId ?? "unknown"} not found.`));
+      }
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/messages/create") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomMessageCreatePayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.meetingRoomService.createManagerMessage(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Meeting room ${payload.message.roomId ?? "unknown"} not found.`));
+      }
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/messages/append-agent-reply") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomAppendReplyPayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.meetingRoomService.appendAgentReply(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Meeting room ${payload.reply.roomId ?? "unknown"} not found.`));
+      }
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/messages/append-agent-failure") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomAppendFailurePayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.meetingRoomService.appendAgentFailure(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Meeting room ${payload.failure.roomId ?? "unknown"} not found.`));
+      }
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/resolutions/create") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomCreateResolutionPayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.meetingRoomService.createResolution(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Meeting room ${payload.resolution.roomId ?? "unknown"} not found.`));
+      }
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/resolutions/promote") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomPromoteResolutionPayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.meetingRoomService.promoteResolution(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Meeting room ${payload.resolution.roomId ?? "unknown"} not found.`));
+      }
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/close") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomClosePayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.meetingRoomService.closeRoom(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Meeting room ${payload.room.roomId ?? "unknown"} not found.`));
+      }
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
     }
 
     if (method === "POST" && url.pathname === "/api/platform/projects/workspace-binding/list") {

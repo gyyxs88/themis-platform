@@ -229,6 +229,7 @@ export async function createPlatformServerFromEnv(
     collaborationService,
     workflowService,
     controlPlaneService,
+    meetingRoomService,
     oncallService,
     authService: createPlatformWebAccessService({
       webLoginSecret: env.THEMIS_PLATFORM_WEB_ACCESS_TOKEN,

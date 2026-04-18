@@ -3,6 +3,7 @@ import { once } from "node:events";
 import test from "node:test";
 import { createPlatformApp } from "./platform-app.js";
 import { createInMemoryPlatformCollaborationService } from "./platform-collaboration-service.js";
+import { createInMemoryPlatformControlPlaneService } from "./platform-control-plane-service.js";
 import { createInMemoryPlatformGovernanceService } from "./platform-governance-service.js";
 import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformWorkerRunService } from "./platform-worker-run-service.js";
@@ -1218,6 +1219,126 @@ test("createPlatformApp 会暴露平台静态页、节点 API 与共享错误契
         message: "Platform surface does not expose /api/runtime/config.",
       },
     });
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});
+
+test("POST /api/platform/meeting-rooms/* 会暴露会议室数据主链", async () => {
+  const controlPlaneService = createInMemoryPlatformControlPlaneService({
+    now: () => "2026-04-18T09:50:00.000Z",
+    generateOrganizationId: () => "org-1",
+    generatePrincipalId: () => "principal-agent-1",
+    generateAgentId: () => "agent-1",
+  });
+  const created = controlPlaneService.createAgent({
+    ownerPrincipalId: "principal-owner",
+    agent: {
+      organizationId: "org-1",
+      departmentRole: "后端工程",
+      displayName: "后端·衡",
+    },
+  });
+  const nodeService = createInMemoryPlatformNodeService({
+    organizations: [created.organization],
+  });
+  const workerRunService = createInMemoryPlatformWorkerRunService({
+    nodeService,
+  });
+  const workflowService = createInMemoryPlatformWorkflowService({
+    workerRunService,
+  });
+  workflowService.registerAgent({
+    ownerPrincipalId: "principal-owner",
+    organization: created.organization,
+    agent: created.agent,
+  });
+
+  const server = createPlatformApp({
+    accessMode: "open",
+    controlPlaneService,
+    nodeService,
+    workerRunService,
+    workflowService,
+  });
+
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("platform test server did not bind to an ipv4 port");
+    }
+
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const createResponse = await fetch(`${baseUrl}/api/platform/meeting-rooms/create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-owner",
+        room: {
+          title: "发布阻塞讨论",
+          goal: "确认 prod 发布失败的根因。",
+          operatorPrincipalId: "principal-owner",
+          organizationId: "org-1",
+          participants: [{
+            agentId: "agent-1",
+            entryMode: "blank",
+          }],
+        },
+      }),
+    });
+
+    assert.equal(createResponse.status, 200);
+    const createPayload = await createResponse.json() as {
+      room?: { roomId?: string; title?: string };
+    };
+    assert.equal(createPayload.room?.title, "发布阻塞讨论");
+
+    const messageResponse = await fetch(`${baseUrl}/api/platform/meeting-rooms/messages/create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-owner",
+        message: {
+          roomId: createPayload.room?.roomId,
+          content: "先给我你们的根因判断。",
+          operatorPrincipalId: "principal-owner",
+        },
+      }),
+    });
+
+    assert.equal(messageResponse.status, 200);
+    const messagePayload = await messageResponse.json() as {
+      round?: { status?: string };
+    };
+    assert.equal(messagePayload.round?.status, "running");
+
+    const closeResponse = await fetch(`${baseUrl}/api/platform/meeting-rooms/close`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-owner",
+        room: {
+          roomId: createPayload.room?.roomId,
+          closingSummary: "已收口为后续修复任务。",
+        },
+      }),
+    });
+
+    assert.equal(closeResponse.status, 200);
+    const closePayload = await closeResponse.json() as {
+      room?: { status?: string };
+    };
+    assert.equal(closePayload.room?.status, "closed");
   } finally {
     server.close();
     await once(server, "close");

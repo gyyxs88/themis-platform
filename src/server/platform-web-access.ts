@@ -387,6 +387,7 @@ function isPublicWebAccessRoute(method: string, pathname: string): boolean {
 function isPlatformPathAllowedForRole(pathname: string, role: PlatformServiceRole): boolean {
   if (role === "gateway") {
     return pathname.startsWith("/api/platform/agents/")
+      || pathname.startsWith("/api/platform/meeting-rooms/")
       || pathname.startsWith("/api/platform/work-items/")
       || pathname.startsWith("/api/platform/runs/")
       || pathname.startsWith("/api/platform/projects/");
