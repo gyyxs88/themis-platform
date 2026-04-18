@@ -73,6 +73,15 @@ export interface CreateInMemoryPlatformMeetingRoomServiceOptions {
 export function createInMemoryPlatformMeetingRoomService(
   options: CreateInMemoryPlatformMeetingRoomServiceOptions,
 ): SnapshotCapablePlatformMeetingRoomService {
+  const ACTIVE_WORK_CONTEXT_STATUSES = new Set([
+    "waiting_human",
+    "waiting_agent",
+    "waiting_action",
+    "running",
+    "starting",
+    "planning",
+    "queued",
+  ]);
   const now = options.now ?? (() => new Date().toISOString());
   const rooms = new Map<string, ManagedAgentPlatformMeetingRoomRecord>();
   const participants = new Map<string, ManagedAgentPlatformMeetingParticipantRecord>();
@@ -208,6 +217,146 @@ export function createInMemoryPlatformMeetingRoomService(
     updatedAt: timestamp,
   });
 
+  const buildActiveWorkContextSnapshot = (
+    ownerPrincipalId: string,
+    agentId: string,
+    displayName: string,
+    timestamp: string,
+  ) => {
+    const workItems = options.workflowService.listWorkItems({
+      ownerPrincipalId,
+      agentId,
+    }).workItems ?? [];
+    const activeWorkItem = workItems.find((workItem) => ACTIVE_WORK_CONTEXT_STATUSES.has(String(workItem.status ?? "")));
+
+    if (!activeWorkItem) {
+      return {
+        mode: "active_work_context",
+        generatedAt: timestamp,
+        agentId,
+        displayName,
+        currentWorkItem: null,
+        note: "当前没有进行中或等待中的工作项。",
+      };
+    }
+
+    const detail = options.workflowService.getWorkItemDetail({
+      ownerPrincipalId,
+      workItemId: activeWorkItem.workItemId,
+    });
+
+    if (!detail) {
+      return {
+        mode: "active_work_context",
+        generatedAt: timestamp,
+        agentId,
+        displayName,
+        currentWorkItem: null,
+        note: `当前工作项 ${activeWorkItem.workItemId} 详情暂不可读。`,
+      };
+    }
+
+    return {
+      mode: "active_work_context",
+      generatedAt: timestamp,
+      agentId,
+      displayName,
+      currentWorkItem: {
+        workItemId: detail.workItem.workItemId,
+        status: detail.workItem.status,
+        priority: detail.workItem.priority,
+        sourceType: detail.workItem.sourceType,
+        dispatchReason: normalizeOptionalText(String(detail.workItem.dispatchReason ?? "")),
+        goal: detail.workItem.goal,
+        waitingFor: detail.workItem.waitingFor ?? null,
+        projectId: detail.workItem.projectId ?? null,
+        latestWaitingMessage: normalizeOptionalText(String(detail.workItem.latestWaitingMessage ?? "")),
+        latestHumanResponse: normalizeOptionalText(String(detail.workItem.latestHumanResponse ?? "")),
+        waitingActionRequest: Object.prototype.hasOwnProperty.call(detail.workItem, "waitingActionRequest")
+          ? cloneValue(detail.workItem.waitingActionRequest)
+          : null,
+        latestHandoffSummary: normalizeOptionalText(String(detail.workItem.latestHandoffSummary ?? "")),
+        updatedAt: detail.workItem.updatedAt,
+      },
+      ...(detail.parentWorkItem
+        ? {
+            parentWorkItem: {
+              workItemId: detail.parentWorkItem.workItemId,
+              goal: detail.parentWorkItem.goal,
+              status: detail.parentWorkItem.status,
+            },
+          }
+        : {}),
+      ...(Array.isArray(detail.childWorkItems) && detail.childWorkItems.length > 0
+        ? {
+            childWorkItems: detail.childWorkItems.slice(0, 3).map((workItem) => ({
+              workItemId: workItem.workItemId,
+              goal: workItem.goal,
+              status: workItem.status,
+            })),
+          }
+        : {}),
+      ...(Array.isArray(detail.runs) && detail.runs.length > 0
+        ? {
+            latestRun: {
+              runId: detail.runs[0]?.runId,
+              status: detail.runs[0]?.status,
+              updatedAt: detail.runs[0]?.updatedAt,
+            },
+          }
+        : {}),
+      ...(detail.latestHandoff
+        ? {
+            latestHandoff: {
+              handoffId: detail.latestHandoff.handoffId,
+              summary: normalizeOptionalText(String(detail.latestHandoff.summary ?? "")),
+              blockers: Array.isArray(detail.latestHandoff.blockers)
+                ? detail.latestHandoff.blockers.map((item) => String(item))
+                : [],
+              recommendedNextActions: Array.isArray(detail.latestHandoff.recommendedNextActions)
+                ? detail.latestHandoff.recommendedNextActions.map((item) => String(item))
+                : [],
+              updatedAt: detail.latestHandoff.updatedAt,
+            },
+          }
+        : {}),
+    };
+  };
+
+  const buildSelectedContextSnapshot = (
+    selectedArtifactRefs: NonNullable<ManagedAgentPlatformMeetingRoomCreatePayload["room"]["participants"]>[number]["selectedArtifactRefs"],
+    timestamp: string,
+  ) => ({
+    mode: "selected_context",
+    generatedAt: timestamp,
+    selectedArtifactRefs: (selectedArtifactRefs ?? []).map((artifactRef) => ({
+      refType: artifactRef.refType,
+      refId: artifactRef.refId,
+      ...(Object.prototype.hasOwnProperty.call(artifactRef, "snapshotJson")
+        ? { snapshotJson: cloneValue(artifactRef.snapshotJson) }
+        : {}),
+    })),
+  });
+
+  const buildParticipantEntryContextSnapshot = (
+    ownerPrincipalId: string,
+    agentId: string,
+    displayName: string,
+    entryMode: ManagedAgentPlatformMeetingParticipantRecord["entryMode"],
+    selectedArtifactRefs: NonNullable<ManagedAgentPlatformMeetingRoomCreatePayload["room"]["participants"]>[number]["selectedArtifactRefs"],
+    timestamp: string,
+  ) => {
+    if (entryMode === "active_work_context") {
+      return buildActiveWorkContextSnapshot(ownerPrincipalId, agentId, displayName, timestamp);
+    }
+
+    if (entryMode === "selected_context") {
+      return buildSelectedContextSnapshot(selectedArtifactRefs, timestamp);
+    }
+
+    return null;
+  };
+
   const addParticipantRecords = (
     ownerPrincipalId: string,
     roomId: string,
@@ -240,6 +389,14 @@ export function createInMemoryPlatformMeetingRoomService(
       const entryMode = requestedParticipant.entryMode
         ?? ((requestedParticipant.selectedArtifactRefs?.length ?? 0) > 0 ? "selected_context" : "blank");
       const selectedArtifactRefs = requestedParticipant.selectedArtifactRefs?.map(cloneValue) ?? [];
+      const entryContextSnapshotJson = buildParticipantEntryContextSnapshot(
+        ownerPrincipalId,
+        agentDetail.agent.agentId,
+        agentDetail.agent.displayName,
+        entryMode,
+        selectedArtifactRefs,
+        timestamp,
+      );
       const participant: ManagedAgentPlatformMeetingParticipantRecord = {
         participantId: nextParticipantId(),
         roomId,
@@ -249,9 +406,7 @@ export function createInMemoryPlatformMeetingRoomService(
         displayName: agentDetail.agent.displayName,
         roomRole: "participant",
         entryMode,
-        ...(selectedArtifactRefs.length > 0
-          ? { entryContextSnapshotJson: { selectedArtifactRefs } }
-          : {}),
+        ...(entryContextSnapshotJson ? { entryContextSnapshotJson } : {}),
         roomSessionId: `meeting-room:${roomId}:participant:${agentDetail.agent.agentId}`,
         joinedAt: timestamp,
         createdAt: timestamp,
@@ -290,13 +445,16 @@ export function createInMemoryPlatformMeetingRoomService(
     triggerMessageId: string,
     targetParticipantIds: string[],
     timestamp: string,
+    shouldQueue = false,
   ): ManagedAgentPlatformMeetingRoundRecord => {
     const normalizedTargetParticipantIds = uniqueValues(targetParticipantIds.map(normalizeText));
     const baseRound: ManagedAgentPlatformMeetingRoundRecord = {
       roundId: nextRoundId(),
       roomId,
       triggerMessageId,
-      status: normalizedTargetParticipantIds.length > 0 ? "queued" : "completed",
+      status: normalizedTargetParticipantIds.length > 0
+        ? (shouldQueue ? "queued" : "running")
+        : "completed",
       targetParticipantIds: normalizedTargetParticipantIds,
       respondedParticipantIds: [],
       createdAt: timestamp,
@@ -312,21 +470,24 @@ export function createInMemoryPlatformMeetingRoomService(
 
     return {
       ...baseRound,
-      status: "running",
-      startedAt: timestamp,
+      ...(shouldQueue ? {} : { startedAt: timestamp }),
     };
   };
 
-  const completeRoundIfReady = (
+  const finalizeRoundIfReady = (
     round: ManagedAgentPlatformMeetingRoundRecord,
     timestamp: string,
   ): ManagedAgentPlatformMeetingRoundRecord => {
-    if (round.status === "failed") {
+    if (round.respondedParticipantIds.length < round.targetParticipantIds.length) {
       return round;
     }
 
-    if (round.respondedParticipantIds.length < round.targetParticipantIds.length) {
-      return round;
+    if (round.status === "failed") {
+      return {
+        ...round,
+        completedAt: round.completedAt ?? timestamp,
+        updatedAt: timestamp,
+      };
     }
 
     return {
@@ -335,6 +496,26 @@ export function createInMemoryPlatformMeetingRoomService(
       completedAt: timestamp,
       updatedAt: timestamp,
     };
+  };
+
+  const activateNextQueuedRound = (
+    roomId: string,
+    timestamp: string,
+  ): ManagedAgentPlatformMeetingRoundRecord | null => {
+    const nextQueuedRound = listRoomRounds(roomId)
+      .find((round) => round.status === "queued");
+    if (!nextQueuedRound) {
+      return null;
+    }
+
+    const promotedRound: ManagedAgentPlatformMeetingRoundRecord = {
+      ...nextQueuedRound,
+      status: "running",
+      startedAt: nextQueuedRound.startedAt ?? timestamp,
+      updatedAt: timestamp,
+    };
+    rounds.set(promotedRound.roundId, promotedRound);
+    return promotedRound;
   };
 
   return {
@@ -453,6 +634,7 @@ export function createInMemoryPlatformMeetingRoomService(
         message.messageId,
         targetParticipants.map((participant) => participant.participantId),
         timestamp,
+        listRoomRounds(room.roomId).some((item) => !item.completedAt && item.respondedParticipantIds.length < item.targetParticipantIds.length),
       );
       rounds.set(round.roundId, round);
       const nextRoom = touchRoom(room, timestamp);
@@ -499,7 +681,7 @@ export function createInMemoryPlatformMeetingRoomService(
       };
       messages.set(message.messageId, message);
 
-      const nextRound = completeRoundIfReady({
+      const nextRound = finalizeRoundIfReady({
         ...round,
         status: round.status === "failed" ? round.status : "running",
         startedAt: round.startedAt ?? timestamp,
@@ -507,6 +689,9 @@ export function createInMemoryPlatformMeetingRoomService(
         updatedAt: timestamp,
       }, timestamp);
       rounds.set(nextRound.roundId, nextRound);
+      if (nextRound.respondedParticipantIds.length >= nextRound.targetParticipantIds.length) {
+        activateNextQueuedRound(room.roomId, timestamp);
+      }
       const nextRoom = touchRoom(room, timestamp);
 
       return {
@@ -547,14 +732,19 @@ export function createInMemoryPlatformMeetingRoomService(
       messages.set(message.messageId, message);
 
       const nextRound: ManagedAgentPlatformMeetingRoundRecord = {
-        ...round,
-        status: "failed",
-        startedAt: round.startedAt ?? timestamp,
-        respondedParticipantIds: uniqueValues([...round.respondedParticipantIds, participant.participantId]),
-        failureMessage: payload.failure.failureMessage,
-        updatedAt: timestamp,
+        ...finalizeRoundIfReady({
+          ...round,
+          status: "failed",
+          startedAt: round.startedAt ?? timestamp,
+          respondedParticipantIds: uniqueValues([...round.respondedParticipantIds, participant.participantId]),
+          failureMessage: payload.failure.failureMessage,
+          updatedAt: timestamp,
+        }, timestamp),
       };
       rounds.set(nextRound.roundId, nextRound);
+      if (nextRound.respondedParticipantIds.length >= nextRound.targetParticipantIds.length) {
+        activateNextQueuedRound(room.roomId, timestamp);
+      }
       const nextRoom = touchRoom(room, timestamp);
 
       return {
@@ -566,7 +756,7 @@ export function createInMemoryPlatformMeetingRoomService(
 
     createResolution(payload) {
       const room = getOwnedRoom(payload.ownerPrincipalId, payload.resolution.roomId);
-      if (!room) {
+      if (!room || room.status === "closed") {
         return null;
       }
 
@@ -588,7 +778,7 @@ export function createInMemoryPlatformMeetingRoomService(
 
     promoteResolution(payload) {
       const room = getOwnedRoom(payload.ownerPrincipalId, payload.resolution.roomId);
-      if (!room) {
+      if (!room || room.status === "closed") {
         return null;
       }
 
@@ -623,7 +813,7 @@ export function createInMemoryPlatformMeetingRoomService(
 
     closeRoom(payload) {
       const room = getOwnedRoom(payload.ownerPrincipalId, payload.room.roomId);
-      if (!room) {
+      if (!room || room.status === "closed") {
         return null;
       }
 

@@ -6,7 +6,7 @@
 
 - 当前入口：`src/server/platform-main.ts`
 - 独立 CLI：仓库根目录 `./themis-platform`
-- 当前状态：已具备最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 控制面、`projects/workspace-binding/list|detail|upsert` 项目绑定、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 治理读面、`oncall/summary` 值班建议、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`meeting-rooms/list|create|detail|participants/add|messages/create|append-agent-reply|append-agent-failure|resolutions/create|promote|close` 平台内部会议室控制面、`Web Access + Platform Service Bearer` 鉴权链，以及 `worker/runs/pull|update|complete` 自动调度执行链路；当前 `worker pull` 已能把 `queued work-item` 结合项目工作区绑定自动分配成新 `run + execution lease`
+- 当前状态：已具备最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 控制面、`projects/workspace-binding/list|detail|upsert` 项目绑定、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 治理读面、`oncall/summary` 值班建议、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`meeting-rooms/list|create|detail|participants/add|messages/create|append-agent-reply|append-agent-failure|resolutions/create|promote|close` 平台内部会议室控制面、`Web Access + Platform Service Bearer` 鉴权链，以及 `worker/runs/pull|update|complete` 自动调度执行链路；当前内部会议室已经支持同房间轮次排队、参与者上下文入场、结论提升与关闭收口，而 `worker pull` 已能把 `queued work-item` 结合项目工作区绑定自动分配成新 `run + execution lease`
 
 当前最小能力：
 
