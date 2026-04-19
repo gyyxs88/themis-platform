@@ -28,6 +28,7 @@
           <button id="platform-nav-mailbox" type="button" class="platform-nav-item">Mailbox</button>
           <button id="platform-nav-agents-projects" type="button" class="platform-nav-item">Agents / Projects</button>
           <button id="platform-nav-collaboration-runs" type="button" class="platform-nav-item">协作与 Runs</button>
+          <button id="platform-nav-meeting-rooms" type="button" class="platform-nav-item">会议室观察台</button>
           <button id="platform-nav-overview" type="button" class="platform-nav-item">平台概览</button>
         </nav>
       </aside>
@@ -756,6 +757,91 @@
             </p>
             <div id="platform-runs-list" class="platform-runs-list"></div>
             <div id="platform-run-detail" class="platform-run-detail"></div>
+          </section>
+        </section>
+
+        <section id="platform-view-meeting-rooms" class="platform-view" hidden>
+          <article class="platform-panel platform-view-hero">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Workbench</p>
+                <h2>会议室观察台</h2>
+              </div>
+              <p class="platform-panel-copy">平台作为会议室真相源，当前页面只提供只读观察与强制终止，不承担主持发言。</p>
+            </div>
+          </article>
+
+          <section class="platform-panel">
+            <div class="platform-panel-head">
+              <div>
+                <p class="platform-panel-kicker">Meeting Rooms</p>
+                <h2>房间与讨论过程</h2>
+              </div>
+              <p class="platform-panel-copy">
+                这里直接读取平台会议室对象，显示房间、参与者、轮次、消息和结论；如需止损，可由平台值班员强制终止会议。
+              </p>
+            </div>
+
+            <div class="platform-summary-grid">
+              <article class="platform-summary-card">
+                <span>房间总数</span>
+                <strong id="platform-meeting-rooms-total">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>进行中</span>
+                <strong id="platform-meeting-rooms-open">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>已终止</span>
+                <strong id="platform-meeting-rooms-terminated">0</strong>
+              </article>
+              <article class="platform-summary-card">
+                <span>已关闭</span>
+                <strong id="platform-meeting-rooms-closed">0</strong>
+              </article>
+            </div>
+
+            <p id="platform-meeting-rooms-status" class="platform-inline-note">
+              还没有读取会议室列表。
+            </p>
+            <p id="platform-meeting-rooms-action-status" class="platform-inline-note">
+              平台页当前只提供只读观察和终止会议能力。
+            </p>
+
+            <div class="platform-split-grid">
+              <div>
+                <p id="platform-meeting-rooms-empty" class="platform-empty-state">
+                  先填写 ownerPrincipalId，再读取当前平台会议室。
+                </p>
+                <div id="platform-meeting-rooms-list" class="platform-meeting-rooms-list"></div>
+              </div>
+              <div>
+                <div id="platform-meeting-room-detail" class="platform-card-detail"></div>
+
+                <article class="platform-form-card platform-form-card--secondary">
+                  <div class="platform-form-head">
+                    <div>
+                      <p class="platform-panel-kicker">Terminate</p>
+                      <h3>平台终止当前会议</h3>
+                    </div>
+                  </div>
+
+                  <form id="platform-meeting-room-terminate-form" class="platform-action-grid platform-action-grid--compact">
+                    <label class="platform-field platform-field--span-full">
+                      <span>terminationReason</span>
+                      <textarea
+                        id="platform-meeting-room-terminate-reason-input"
+                        rows="4"
+                        placeholder="例如：平台值班判断当前会议进入异常循环，先强制终止。"
+                      ></textarea>
+                    </label>
+                    <button id="platform-meeting-room-terminate-submit" type="submit" class="platform-button subtle">
+                      终止当前会议
+                    </button>
+                  </form>
+                </article>
+              </div>
+            </div>
           </section>
         </section>
 

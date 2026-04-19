@@ -18,6 +18,8 @@ import type {
   ManagedAgentPlatformMeetingRoomParticipantsAddResult,
   ManagedAgentPlatformMeetingRoomPromoteResolutionPayload,
   ManagedAgentPlatformMeetingRoomPromoteResolutionResult,
+  ManagedAgentPlatformMeetingRoomTerminatePayload,
+  ManagedAgentPlatformMeetingRoomTerminateResult,
 } from "themis-contracts/managed-agent-platform-meetings";
 import type {
   ManagedAgentPlatformMeetingArtifactRefRecord,
@@ -50,6 +52,7 @@ export interface PlatformMeetingRoomService {
   createResolution(payload: ManagedAgentPlatformMeetingRoomCreateResolutionPayload): ManagedAgentPlatformMeetingRoomCreateResolutionResult | null;
   promoteResolution(payload: ManagedAgentPlatformMeetingRoomPromoteResolutionPayload): ManagedAgentPlatformMeetingRoomPromoteResolutionResult | null;
   closeRoom(payload: ManagedAgentPlatformMeetingRoomClosePayload): ManagedAgentPlatformMeetingRoomCloseResult | null;
+  terminateRoom(payload: ManagedAgentPlatformMeetingRoomTerminatePayload): ManagedAgentPlatformMeetingRoomTerminateResult | null;
 }
 
 export interface SnapshotCapablePlatformMeetingRoomService extends PlatformMeetingRoomService {
@@ -502,6 +505,11 @@ export function createInMemoryPlatformMeetingRoomService(
     roomId: string,
     timestamp: string,
   ): ManagedAgentPlatformMeetingRoundRecord | null => {
+    const room = rooms.get(roomId);
+    if (!room || isMeetingRoomReadOnly(room.status)) {
+      return null;
+    }
+
     const nextQueuedRound = listRoomRounds(roomId)
       .find((round) => round.status === "queued");
     if (!nextQueuedRound) {
@@ -516,6 +524,25 @@ export function createInMemoryPlatformMeetingRoomService(
     };
     rounds.set(promotedRound.roundId, promotedRound);
     return promotedRound;
+  };
+
+  const isMeetingRoomReadOnly = (status: ManagedAgentPlatformMeetingRoomRecord["status"]) => (
+    status === "closed" || status === "terminated"
+  );
+
+  const requireWritableRoom = (
+    room: ManagedAgentPlatformMeetingRoomRecord,
+    actionLabel: string,
+  ): ManagedAgentPlatformMeetingRoomRecord => {
+    if (room.status === "closed") {
+      throw new Error(`Meeting room ${room.roomId} 已关闭，不能继续${actionLabel}。`);
+    }
+
+    if (room.status === "terminated") {
+      throw new Error(`Meeting room ${room.roomId} 已被平台终止，不能继续${actionLabel}。`);
+    }
+
+    return room;
   };
 
   return {
@@ -589,6 +616,7 @@ export function createInMemoryPlatformMeetingRoomService(
       if (!room) {
         return null;
       }
+      requireWritableRoom(room, "拉新员工入场");
 
       const timestamp = now();
       addParticipantRecords(
@@ -604,9 +632,10 @@ export function createInMemoryPlatformMeetingRoomService(
 
     createManagerMessage(payload) {
       const room = getOwnedRoom(payload.ownerPrincipalId, payload.message.roomId);
-      if (!room || room.status === "closed") {
+      if (!room) {
         return null;
       }
+      requireWritableRoom(room, "发起新一轮讨论");
 
       const timestamp = now();
       const targetParticipantIds = payload.message.targetParticipantIds?.map(normalizeText) ?? [];
@@ -652,6 +681,7 @@ export function createInMemoryPlatformMeetingRoomService(
       if (!room) {
         return null;
       }
+      requireWritableRoom(room, "写入数字员工回复");
 
       const round = rounds.get(normalizeText(payload.reply.roundId));
       const participant = participants.get(normalizeText(payload.reply.participantId));
@@ -706,6 +736,7 @@ export function createInMemoryPlatformMeetingRoomService(
       if (!room) {
         return null;
       }
+      requireWritableRoom(room, "写入失败回执");
 
       const round = rounds.get(normalizeText(payload.failure.roundId));
       const participant = participants.get(normalizeText(payload.failure.participantId));
@@ -756,9 +787,10 @@ export function createInMemoryPlatformMeetingRoomService(
 
     createResolution(payload) {
       const room = getOwnedRoom(payload.ownerPrincipalId, payload.resolution.roomId);
-      if (!room || room.status === "closed") {
+      if (!room) {
         return null;
       }
+      requireWritableRoom(room, "沉淀会议结论");
 
       const timestamp = now();
       const resolution: ManagedAgentPlatformMeetingResolutionRecord = {
@@ -778,9 +810,10 @@ export function createInMemoryPlatformMeetingRoomService(
 
     promoteResolution(payload) {
       const room = getOwnedRoom(payload.ownerPrincipalId, payload.resolution.roomId);
-      if (!room || room.status === "closed") {
+      if (!room) {
         return null;
       }
+      requireWritableRoom(room, "提升会议结论");
 
       const resolutionId = normalizeText(payload.resolution.resolutionId);
       const resolution = resolutions.get(resolutionId);
@@ -816,6 +849,9 @@ export function createInMemoryPlatformMeetingRoomService(
       if (!room || room.status === "closed") {
         return null;
       }
+      if (room.status === "terminated") {
+        throw new Error(`Meeting room ${room.roomId} 已被平台终止，不能再按正常收口关闭。`);
+      }
 
       const timestamp = now();
       const nextRoom: ManagedAgentPlatformMeetingRoomRecord = {
@@ -823,6 +859,62 @@ export function createInMemoryPlatformMeetingRoomService(
         status: "closed",
         closedAt: timestamp,
         closingSummary: normalizeText(payload.room.closingSummary),
+        updatedAt: timestamp,
+      };
+      rooms.set(nextRoom.roomId, nextRoom);
+      return buildRoomDetail(nextRoom.roomId);
+    },
+
+    terminateRoom(payload) {
+      const room = getOwnedRoom(payload.ownerPrincipalId, payload.termination.roomId);
+      if (!room) {
+        return null;
+      }
+      if (room.status === "closed") {
+        throw new Error(`Meeting room ${room.roomId} 已正常关闭，不能再终止。`);
+      }
+      if (room.status === "terminated") {
+        return buildRoomDetail(room.roomId);
+      }
+
+      const timestamp = now();
+      const terminationReason = normalizeText(payload.termination.terminationReason);
+      const terminationMessage = `平台已终止会议：${terminationReason}`;
+
+      for (const round of listRoomRounds(room.roomId)) {
+        if (round.status !== "running" && round.status !== "queued") {
+          continue;
+        }
+
+        rounds.set(round.roundId, {
+          ...round,
+          status: "failed",
+          completedAt: round.completedAt ?? timestamp,
+          failureMessage: terminationMessage,
+          updatedAt: timestamp,
+        });
+      }
+
+      const message: ManagedAgentPlatformMeetingMessageRecord = {
+        messageId: nextMessageId(),
+        roomId: room.roomId,
+        speakerType: "system",
+        speakerPrincipalId: normalizeText(payload.ownerPrincipalId),
+        operatorPrincipalId: normalizeText(payload.termination.operatorPrincipalId),
+        audience: "all_participants",
+        content: terminationMessage,
+        messageKind: "status",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      messages.set(message.messageId, message);
+
+      const nextRoom: ManagedAgentPlatformMeetingRoomRecord = {
+        ...room,
+        status: "terminated",
+        terminatedAt: timestamp,
+        terminatedByOperatorPrincipalId: normalizeText(payload.termination.operatorPrincipalId),
+        terminationReason,
         updatedAt: timestamp,
       };
       rooms.set(nextRoom.roomId, nextRoom);

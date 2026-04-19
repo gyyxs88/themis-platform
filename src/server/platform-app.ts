@@ -55,6 +55,7 @@ import type {
   ManagedAgentPlatformMeetingRoomMessageCreatePayload,
   ManagedAgentPlatformMeetingRoomParticipantsAddPayload,
   ManagedAgentPlatformMeetingRoomPromoteResolutionPayload,
+  ManagedAgentPlatformMeetingRoomTerminatePayload,
 } from "themis-contracts/managed-agent-platform-meetings";
 import type { ManagedAgentPlatformOncallSummaryPayload } from "themis-contracts/managed-agent-platform-oncall";
 import type { ManagedAgentPlatformWorkItemRecord } from "themis-contracts/managed-agent-platform-shared";
@@ -655,6 +656,19 @@ async function handlePlatformRequest(
       const result = options.meetingRoomService.closeRoom(payload);
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Meeting room ${payload.room.roomId ?? "unknown"} not found.`));
+      }
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/meeting-rooms/terminate") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformMeetingRoomTerminatePayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.meetingRoomService.terminateRoom(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Meeting room ${payload.termination.roomId ?? "unknown"} not found.`));
       }
       await recordStateMutation(options);
       return writeJson(response, 200, result);

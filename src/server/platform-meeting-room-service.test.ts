@@ -292,7 +292,7 @@ test("closeRoom 后不再允许继续创建结论或提升结论", () => {
   });
   assert.equal(closed?.room.status, "closed");
 
-  const createAfterClose = service.createResolution({
+  assert.throws(() => service.createResolution({
     ownerPrincipalId: "principal-owner",
     resolution: {
       roomId: room.roomId,
@@ -300,18 +300,79 @@ test("closeRoom 后不再允许继续创建结论或提升结论", () => {
       title: "关闭后新结论",
       summary: "不应成功。",
     },
-  });
-  const promoteAfterClose = service.promoteResolution({
+  }), /已关闭/);
+  assert.throws(() => service.promoteResolution({
     ownerPrincipalId: "principal-owner",
     resolution: {
       roomId: room.roomId,
       resolutionId: resolutionDetail?.resolutions[0]?.resolutionId ?? "",
       targetAgentId: "agent-backend",
     },
-  });
+  }), /已关闭/);
+});
 
-  assert.equal(createAfterClose, null);
-  assert.equal(promoteAfterClose, null);
+test("terminateRoom 会冻结会议室、终止排队轮次，并阻止后续写入", () => {
+  const service = createFixtureService();
+  const room = service.createRoom(createFixtureRoomPayload()).room;
+
+  const first = service.createManagerMessage({
+    ownerPrincipalId: "principal-owner",
+    message: {
+      roomId: room.roomId,
+      content: "先给出第一轮判断。",
+      operatorPrincipalId: "principal-owner",
+    },
+  });
+  assert.ok(first);
+
+  const second = service.createManagerMessage({
+    ownerPrincipalId: "principal-owner",
+    message: {
+      roomId: room.roomId,
+      content: "第二轮补充收敛动作。",
+      operatorPrincipalId: "principal-owner",
+    },
+  });
+  assert.ok(second);
+  assert.equal(second.round.status, "queued");
+
+  const terminated = service.terminateRoom({
+    ownerPrincipalId: "principal-owner",
+    termination: {
+      roomId: room.roomId,
+      operatorPrincipalId: "principal-owner",
+      terminationReason: "平台值班员判断当前会议进入异常循环。",
+    },
+  });
+  assert.equal(terminated?.room.status, "terminated");
+  assert.equal(terminated?.room.terminationReason, "平台值班员判断当前会议进入异常循环。");
+  assert.equal(terminated?.rounds.every((round) => round.status === "failed"), true);
+  assert.match(terminated?.messages.at(-1)?.content ?? "", /平台已终止会议/);
+
+  assert.throws(() => service.createManagerMessage({
+    ownerPrincipalId: "principal-owner",
+    message: {
+      roomId: room.roomId,
+      content: "终止后不应再创建新讨论。",
+      operatorPrincipalId: "principal-owner",
+    },
+  }), /已被平台终止/);
+  assert.throws(() => service.createResolution({
+    ownerPrincipalId: "principal-owner",
+    resolution: {
+      roomId: room.roomId,
+      sourceMessageIds: [],
+      title: "终止后新结论",
+      summary: "不应成功。",
+    },
+  }), /已被平台终止/);
+  assert.throws(() => service.closeRoom({
+    ownerPrincipalId: "principal-owner",
+    room: {
+      roomId: room.roomId,
+      closingSummary: "终止后不应再正常收口。",
+    },
+  }), /已被平台终止/);
 });
 
 function createFixtureService() {

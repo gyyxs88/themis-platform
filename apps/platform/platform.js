@@ -24,6 +24,7 @@ const PLATFORM_VIEWS = [
   "mailbox",
   "agents-projects",
   "collaboration-runs",
+  "meeting-rooms",
   "overview",
 ];
 
@@ -99,6 +100,35 @@ export function summarizeReclaimResult(result) {
     reclaimedRunCount: Number(summary.reclaimedRunCount ?? 0),
     requeuedWorkItemCount: Number(summary.requeuedWorkItemCount ?? 0),
   };
+}
+
+function summarizeMeetingRooms(rooms) {
+  const summary = {
+    total: 0,
+    open: 0,
+    terminated: 0,
+    closed: 0,
+  };
+
+  for (const room of Array.isArray(rooms) ? rooms : []) {
+    summary.total += 1;
+
+    if (room?.status === "open" || room?.status === "closing") {
+      summary.open += 1;
+      continue;
+    }
+
+    if (room?.status === "terminated") {
+      summary.terminated += 1;
+      continue;
+    }
+
+    if (room?.status === "closed") {
+      summary.closed += 1;
+    }
+  }
+
+  return summary;
 }
 
 export function buildNodeAttentionById(oncallSummary) {
@@ -200,6 +230,7 @@ function applyActiveView(dom, state) {
     mailbox: [dom.navMailbox, dom.viewMailbox],
     "agents-projects": [dom.navAgentsProjects, dom.viewAgentsProjects],
     "collaboration-runs": [dom.navCollaborationRuns, dom.viewCollaborationRuns],
+    "meeting-rooms": [dom.navMeetingRooms, dom.viewMeetingRooms],
     overview: [dom.navOverview, dom.viewOverview],
   };
 
@@ -238,6 +269,7 @@ export function initializePlatformSurface(options = {}) {
     navMailbox: documentRef.getElementById("platform-nav-mailbox"),
     navAgentsProjects: documentRef.getElementById("platform-nav-agents-projects"),
     navCollaborationRuns: documentRef.getElementById("platform-nav-collaboration-runs"),
+    navMeetingRooms: documentRef.getElementById("platform-nav-meeting-rooms"),
     navOverview: documentRef.getElementById("platform-nav-overview"),
     viewNodesOncall: documentRef.getElementById("platform-view-nodes-oncall"),
     viewGovernance: documentRef.getElementById("platform-view-governance"),
@@ -245,6 +277,7 @@ export function initializePlatformSurface(options = {}) {
     viewMailbox: documentRef.getElementById("platform-view-mailbox"),
     viewAgentsProjects: documentRef.getElementById("platform-view-agents-projects"),
     viewCollaborationRuns: documentRef.getElementById("platform-view-collaboration-runs"),
+    viewMeetingRooms: documentRef.getElementById("platform-view-meeting-rooms"),
     viewOverview: documentRef.getElementById("platform-view-overview"),
     sessionTitle: documentRef.getElementById("platform-session-title"),
     sessionNote: documentRef.getElementById("platform-session-note"),
@@ -359,6 +392,18 @@ export function initializePlatformSurface(options = {}) {
     runsEmpty: documentRef.getElementById("platform-runs-empty"),
     runsList: documentRef.getElementById("platform-runs-list"),
     runDetail: documentRef.getElementById("platform-run-detail"),
+    meetingRoomsStatus: documentRef.getElementById("platform-meeting-rooms-status"),
+    meetingRoomsActionStatus: documentRef.getElementById("platform-meeting-rooms-action-status"),
+    meetingRoomsTotal: documentRef.getElementById("platform-meeting-rooms-total"),
+    meetingRoomsOpen: documentRef.getElementById("platform-meeting-rooms-open"),
+    meetingRoomsTerminated: documentRef.getElementById("platform-meeting-rooms-terminated"),
+    meetingRoomsClosed: documentRef.getElementById("platform-meeting-rooms-closed"),
+    meetingRoomsEmpty: documentRef.getElementById("platform-meeting-rooms-empty"),
+    meetingRoomsList: documentRef.getElementById("platform-meeting-rooms-list"),
+    meetingRoomDetail: documentRef.getElementById("platform-meeting-room-detail"),
+    meetingRoomTerminateForm: documentRef.getElementById("platform-meeting-room-terminate-form"),
+    meetingRoomTerminateReasonInput: documentRef.getElementById("platform-meeting-room-terminate-reason-input"),
+    meetingRoomTerminateSubmit: documentRef.getElementById("platform-meeting-room-terminate-submit"),
   };
   const state = {
     loading: false,
@@ -412,6 +457,11 @@ export function initializePlatformSurface(options = {}) {
     runs: [],
     selectedRunId: "",
     selectedRunDetail: null,
+    meetingRooms: [],
+    selectedMeetingRoomId: "",
+    selectedMeetingRoomDetail: null,
+    meetingRoomActionMessage: "",
+    meetingRoomActionPending: "",
   };
 
   if (dom.ownerInput) {
@@ -568,6 +618,7 @@ export function initializePlatformSurface(options = {}) {
       total: state.agents.length,
       projects: state.projectBindings.length,
     };
+    const meetingRoomSummary = summarizeMeetingRooms(state.meetingRooms);
     const selectedNodeLabel = state.selectedNodeDetail?.node?.displayName
       || state.selectedNodeDetail?.node?.nodeId
       || state.selectedNodeId;
@@ -592,6 +643,10 @@ export function initializePlatformSurface(options = {}) {
     const hasAgents = state.agents.length > 0;
     const hasProjects = state.projectBindings.length > 0;
     const hasRuns = state.runs.length > 0;
+    const hasMeetingRooms = state.meetingRooms.length > 0;
+    const selectedMeetingRoomLabel = state.selectedMeetingRoomDetail?.room?.title
+      || state.selectedMeetingRoomId;
+    const meetingRoomReadonly = isMeetingRoomReadOnly(state.selectedMeetingRoomDetail?.room?.status);
     const nodesStatusMessage = state.loadErrorMessage
       ? state.loadErrorMessage
       : state.loading
@@ -620,6 +675,22 @@ export function initializePlatformSurface(options = {}) {
         : state.ownerPrincipalId
           ? `当前已接入 ${state.runs.length} 条 recent runs。`
           : "先填写 ownerPrincipalId，再查看当前平台 runs。";
+    const meetingRoomsStatusMessage = state.loadErrorMessage
+      ? state.loadErrorMessage
+      : state.loading
+        ? "正在读取平台会议室列表与详情。"
+        : state.ownerPrincipalId
+          ? `当前共有 ${meetingRoomSummary.total} 个会议室，其中进行中 ${meetingRoomSummary.open} 个。`
+          : "先填写 ownerPrincipalId，再查看当前平台会议室。";
+    const meetingRoomActionStatusMessage = state.meetingRoomActionPending
+      ? "平台正在终止当前会议。"
+      : state.meetingRoomActionMessage
+        ? state.meetingRoomActionMessage
+        : selectedMeetingRoomLabel
+          ? (meetingRoomReadonly
+              ? `当前选中：${selectedMeetingRoomLabel}（只读）`
+              : `当前选中：${selectedMeetingRoomLabel}。平台页可强制终止，但不直接主持。`)
+          : "选择一个会议室后，这里会显示完整讨论过程，并可在必要时终止会议。";
     const handoffAgentLabel = state.handoffView?.agent?.displayName || state.selectedHandoffAgentId;
     const collaborationStatusMessage = state.loadErrorMessage
       ? state.loadErrorMessage
@@ -1171,6 +1242,70 @@ export function initializePlatformSurface(options = {}) {
           ? '<p class="platform-inline-note">点击任意 run 卡片，查看当前 detail。</p>'
           : "";
     }
+
+    if (dom.meetingRoomsStatus) {
+      dom.meetingRoomsStatus.textContent = meetingRoomsStatusMessage;
+    }
+
+    if (dom.meetingRoomsActionStatus) {
+      dom.meetingRoomsActionStatus.textContent = meetingRoomActionStatusMessage;
+    }
+
+    if (dom.meetingRoomsTotal) {
+      dom.meetingRoomsTotal.textContent = String(meetingRoomSummary.total);
+    }
+
+    if (dom.meetingRoomsOpen) {
+      dom.meetingRoomsOpen.textContent = String(meetingRoomSummary.open);
+    }
+
+    if (dom.meetingRoomsTerminated) {
+      dom.meetingRoomsTerminated.textContent = String(meetingRoomSummary.terminated);
+    }
+
+    if (dom.meetingRoomsClosed) {
+      dom.meetingRoomsClosed.textContent = String(meetingRoomSummary.closed);
+    }
+
+    if (dom.meetingRoomsEmpty) {
+      dom.meetingRoomsEmpty.hidden = hasMeetingRooms;
+      dom.meetingRoomsEmpty.textContent = state.loadErrorMessage
+        ? "会议室读取失败，请先排查平台控制面。"
+        : state.ownerPrincipalId
+          ? "当前 ownerPrincipalId 下还没有会议室。"
+          : "先填写 ownerPrincipalId，再读取当前平台会议室。";
+    }
+
+    if (dom.meetingRoomsList) {
+      dom.meetingRoomsList.innerHTML = hasMeetingRooms
+        ? state.meetingRooms.map((room) => renderMeetingRoomCard(room, state.selectedMeetingRoomId)).join("")
+        : "";
+    }
+
+    if (dom.meetingRoomDetail) {
+      dom.meetingRoomDetail.innerHTML = state.selectedMeetingRoomDetail
+        ? renderMeetingRoomDetail(state.selectedMeetingRoomDetail)
+        : hasMeetingRooms
+          ? '<p class="platform-inline-note">点击任意会议室卡片，查看当前讨论过程。</p>'
+          : "";
+    }
+
+    if (dom.meetingRoomTerminateSubmit) {
+      dom.meetingRoomTerminateSubmit.disabled = state.loading
+        || Boolean(state.meetingRoomActionPending)
+        || !state.selectedMeetingRoomId
+        || meetingRoomReadonly;
+      dom.meetingRoomTerminateSubmit.textContent = state.meetingRoomActionPending === "terminate"
+        ? "终止中..."
+        : "终止当前会议";
+    }
+
+    if (dom.meetingRoomTerminateReasonInput) {
+      dom.meetingRoomTerminateReasonInput.disabled = state.loading
+        || Boolean(state.meetingRoomActionPending)
+        || !state.selectedMeetingRoomId
+        || meetingRoomReadonly;
+    }
   };
 
   const loadSessionStatus = async () => {
@@ -1230,6 +1365,9 @@ export function initializePlatformSurface(options = {}) {
       state.runs = [];
       state.selectedRunId = "";
       state.selectedRunDetail = null;
+      state.meetingRooms = [];
+      state.selectedMeetingRoomId = "";
+      state.selectedMeetingRoomDetail = null;
       render();
       return;
     }
@@ -1250,6 +1388,7 @@ export function initializePlatformSurface(options = {}) {
         workItemsPayload,
         agentsPayload,
         projectBindingsPayload,
+        meetingRoomsPayload,
       ] = await Promise.all([
         requestPlatformJson(fetchFn, "/api/platform/nodes/list", {
           ownerPrincipalId: state.ownerPrincipalId,
@@ -1278,6 +1417,9 @@ export function initializePlatformSurface(options = {}) {
         requestPlatformJson(fetchFn, "/api/platform/projects/workspace-binding/list", {
           ownerPrincipalId: state.ownerPrincipalId,
         }, "读取项目工作区绑定失败。"),
+        requestPlatformJson(fetchFn, "/api/platform/meeting-rooms/list", {
+          ownerPrincipalId: state.ownerPrincipalId,
+        }, "读取会议室列表失败。"),
       ]);
 
       state.nodes = Array.isArray(nodesPayload?.nodes) ? nodesPayload.nodes : [];
@@ -1297,6 +1439,7 @@ export function initializePlatformSurface(options = {}) {
       state.organizations = Array.isArray(agentsPayload?.organizations) ? agentsPayload.organizations : [];
       state.agents = Array.isArray(agentsPayload?.agents) ? agentsPayload.agents : [];
       state.projectBindings = Array.isArray(projectBindingsPayload?.bindings) ? projectBindingsPayload.bindings : [];
+      state.meetingRooms = Array.isArray(meetingRoomsPayload?.rooms) ? meetingRoomsPayload.rooms : [];
 
       const visibleNodes = filterAndSortNodes(state.nodes, {
         searchTerm: state.nodeSearchTerm,
@@ -1394,6 +1537,19 @@ export function initializePlatformSurface(options = {}) {
           runId: state.selectedRunId,
         }, "读取 run detail 失败。")
         : null;
+
+      if (!state.meetingRooms.some((room) => room?.roomId === state.selectedMeetingRoomId)) {
+        state.selectedMeetingRoomId = typeof state.meetingRooms[0]?.roomId === "string"
+          ? state.meetingRooms[0].roomId
+          : "";
+      }
+
+      state.selectedMeetingRoomDetail = state.selectedMeetingRoomId
+        ? await requestPlatformJson(fetchFn, "/api/platform/meeting-rooms/detail", {
+          ownerPrincipalId: state.ownerPrincipalId,
+          roomId: state.selectedMeetingRoomId,
+        }, "读取会议室详情失败。")
+        : null;
     } catch (error) {
       state.nodes = [];
       state.selectedNodeId = "";
@@ -1426,6 +1582,9 @@ export function initializePlatformSurface(options = {}) {
       state.runs = [];
       state.selectedRunId = "";
       state.selectedRunDetail = null;
+      state.meetingRooms = [];
+      state.selectedMeetingRoomId = "";
+      state.selectedMeetingRoomDetail = null;
       state.loadErrorMessage = error instanceof Error ? error.message : "读取平台控制面失败。";
     } finally {
       state.loading = false;
@@ -1452,6 +1611,30 @@ export function initializePlatformSurface(options = {}) {
     } catch (error) {
       state.selectedRunDetail = null;
       state.loadErrorMessage = error instanceof Error ? error.message : "读取 run detail 失败。";
+    } finally {
+      render();
+    }
+  };
+
+  const loadMeetingRoomDetail = async (roomId) => {
+    const normalizedRoomId = typeof roomId === "string" ? roomId.trim() : "";
+
+    if (!normalizedRoomId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    state.selectedMeetingRoomId = normalizedRoomId;
+    render();
+
+    try {
+      state.selectedMeetingRoomDetail = await requestPlatformJson(fetchFn, "/api/platform/meeting-rooms/detail", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        roomId: normalizedRoomId,
+      }, "读取会议室详情失败。");
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.selectedMeetingRoomDetail = null;
+      state.loadErrorMessage = error instanceof Error ? error.message : "读取会议室详情失败。";
     } finally {
       render();
     }
@@ -2060,6 +2243,47 @@ export function initializePlatformSurface(options = {}) {
     }
   };
 
+  const terminateMeetingRoom = async (roomId, terminationReason) => {
+    const normalizedRoomId = typeof roomId === "string" ? roomId.trim() : "";
+    const normalizedTerminationReason = typeof terminationReason === "string" ? terminationReason.trim() : "";
+
+    if (!normalizedRoomId || !state.ownerPrincipalId || typeof fetchFn !== "function") {
+      return;
+    }
+
+    if (!normalizedTerminationReason) {
+      state.meetingRoomActionMessage = "终止会议前，请先填写终止原因。";
+      render();
+      return;
+    }
+
+    state.meetingRoomActionPending = "terminate";
+    render();
+
+    try {
+      const detail = await requestPlatformJson(fetchFn, "/api/platform/meeting-rooms/terminate", {
+        ownerPrincipalId: state.ownerPrincipalId,
+        termination: {
+          roomId: normalizedRoomId,
+          operatorPrincipalId: state.ownerPrincipalId,
+          terminationReason: normalizedTerminationReason,
+        },
+      }, "终止会议室失败。");
+      state.selectedMeetingRoomDetail = detail;
+      state.selectedMeetingRoomId = detail?.room?.roomId ?? normalizedRoomId;
+      state.meetingRooms = upsertById(state.meetingRooms, detail?.room, "roomId");
+      state.meetingRoomActionMessage = detail?.room?.title
+        ? `已终止会议室 ${detail.room.title}。`
+        : "已终止当前会议室。";
+      state.loadErrorMessage = "";
+    } catch (error) {
+      state.meetingRoomActionMessage = error instanceof Error ? error.message : "终止会议室失败。";
+    } finally {
+      state.meetingRoomActionPending = "";
+      render();
+    }
+  };
+
   dom.ownerForm?.addEventListener("submit", (event) => {
     event.preventDefault();
     void loadPlatformData();
@@ -2113,6 +2337,10 @@ export function initializePlatformSurface(options = {}) {
 
   dom.navCollaborationRuns?.addEventListener("click", () => {
     setActiveView("collaboration-runs");
+  });
+
+  dom.navMeetingRooms?.addEventListener("click", () => {
+    setActiveView("meeting-rooms");
   });
 
   dom.navOverview?.addEventListener("click", () => {
@@ -2296,6 +2524,27 @@ export function initializePlatformSurface(options = {}) {
     }
   });
 
+  dom.meetingRoomsList?.addEventListener("click", (event) => {
+    const roomCard = event.target instanceof HTMLElement
+      ? event.target.closest("[data-platform-meeting-room-id]")
+      : null;
+
+    if (!roomCard) {
+      return;
+    }
+
+    const roomId = roomCard.getAttribute("data-platform-meeting-room-id");
+
+    if (roomId) {
+      void loadMeetingRoomDetail(roomId);
+    }
+  });
+
+  dom.meetingRoomTerminateForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void terminateMeetingRoom(state.selectedMeetingRoomId, dom.meetingRoomTerminateReasonInput?.value ?? "");
+  });
+
   void (async () => {
     await loadSessionStatus();
     render();
@@ -2315,6 +2564,7 @@ export function initializePlatformSurface(options = {}) {
     loadWorkItemDetail,
     loadMailbox,
     loadRunDetail,
+    loadMeetingRoomDetail,
     dispatchWorkItem,
     respondWorkItem,
     escalateWorkItem,
@@ -2324,6 +2574,7 @@ export function initializePlatformSurface(options = {}) {
     respondMailbox,
     selectMailboxEntry,
     updateNodeStatus,
+    terminateMeetingRoom,
     setNodeListControls,
     setActiveView,
     toggleNavigation,
@@ -3096,6 +3347,208 @@ function renderRunDetail(detail) {
   </div>`;
 }
 
+function renderMeetingRoomCard(room, selectedMeetingRoomId) {
+  const chips = [
+    room?.roomId ? room.roomId : "",
+    room?.status ? `状态 ${resolveMeetingRoomStatusLabel(room.status)}` : "",
+    room?.discussionMode ? `模式 ${resolveMeetingRoomDiscussionModeLabel(room.discussionMode)}` : "",
+    room?.organizationId ? `组织 ${room.organizationId}` : "",
+  ].filter(Boolean);
+  const selected = typeof room?.roomId === "string" && room.roomId === selectedMeetingRoomId;
+
+  return `<article
+    class="platform-work-item-card"
+    data-platform-meeting-room-id="${escapeHtml(room?.roomId || "")}"
+    data-selected="${selected ? "true" : "false"}"
+  >
+    <div class="platform-node-head">
+      <div>
+        <h3 class="platform-waiting-goal">${escapeHtml(room?.title || room?.roomId || "未命名会议室")}</h3>
+        <div class="platform-node-meta">
+          ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    <p class="platform-inline-note">${escapeHtml(room?.goal || "当前未补充会议目标。")}</p>
+  </article>`;
+}
+
+function renderMeetingRoomDetail(detail) {
+  const room = detail?.room ?? {};
+  const participants = Array.isArray(detail?.participants) ? detail.participants : [];
+  const rounds = Array.isArray(detail?.rounds) ? [...detail.rounds] : [];
+  const messages = Array.isArray(detail?.messages) ? [...detail.messages] : [];
+  const resolutions = Array.isArray(detail?.resolutions) ? [...detail.resolutions] : [];
+  const participantsByAgentId = new Map(
+    participants
+      .filter((participant) => typeof participant?.agentId === "string" && participant.agentId.trim())
+      .map((participant) => [participant.agentId, participant.displayName || participant.agentId]),
+  );
+  const chips = [
+    room?.roomId ? room.roomId : "",
+    room?.status ? `状态 ${resolveMeetingRoomStatusLabel(room.status)}` : "",
+    room?.discussionMode ? `模式 ${resolveMeetingRoomDiscussionModeLabel(room.discussionMode)}` : "",
+    room?.organizationId ? `组织 ${room.organizationId}` : "",
+  ].filter(Boolean);
+  const metaCards = [
+    {
+      label: "创建者",
+      value: room?.createdByOperatorPrincipalId || "未记录",
+    },
+    {
+      label: "更新时间",
+      value: formatTimestamp(room?.updatedAt),
+    },
+    {
+      label: "参与者",
+      value: `${participants.length} 位`,
+    },
+    {
+      label: "轮次",
+      value: `${rounds.length} 轮`,
+    },
+  ];
+  if (room?.status === "closed" && room?.closingSummary) {
+    metaCards.push({
+      label: "收口说明",
+      value: room.closingSummary,
+    });
+  }
+  if (room?.status === "terminated") {
+    metaCards.push({
+      label: "终止原因",
+      value: room?.terminationReason || "未记录",
+    });
+    metaCards.push({
+      label: "终止人",
+      value: room?.terminatedByOperatorPrincipalId || "未记录",
+    });
+  }
+
+  return `<div class="platform-node-detail">
+    <section class="platform-node-detail-section">
+      <div class="platform-node-head">
+        <div>
+          <h3 class="platform-waiting-goal">${escapeHtml(room?.title || room?.roomId || "未命名会议室")}</h3>
+          <div class="platform-node-meta">
+            ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+          </div>
+        </div>
+      </div>
+      <p class="platform-inline-note">会议目标：${escapeHtml(room?.goal || "当前未补充会议目标。")}</p>
+    </section>
+    <section class="platform-node-detail-section">
+      <h3>房间元信息</h3>
+      <div class="platform-node-detail-grid">
+        ${metaCards.map((item) => `
+          <article class="platform-node-detail-card">
+            <span>${escapeHtml(item.label)}</span>
+            <strong>${escapeHtml(item.value)}</strong>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+    <section class="platform-node-detail-section">
+      <h3>参与者</h3>
+      ${participants.length > 0
+        ? participants.map((participant) => renderMeetingRoomParticipantCard(participant)).join("")
+        : '<p class="platform-inline-note">当前房间还没有参与者。</p>'}
+    </section>
+    <section class="platform-node-detail-section">
+      <h3>轮次</h3>
+      ${rounds.length > 0
+        ? rounds
+            .sort((left, right) => compareTimestampDesc(left?.createdAt, right?.createdAt))
+            .map((round) => renderMeetingRoomRoundCard(round))
+            .join("")
+        : '<p class="platform-inline-note">当前还没有会议轮次。</p>'}
+    </section>
+    <section class="platform-node-detail-section">
+      <h3>消息流</h3>
+      ${messages.length > 0
+        ? messages
+            .sort((left, right) => compareTimestampAsc(left?.createdAt, right?.createdAt))
+            .map((message) => renderMeetingRoomMessageCard(message, participantsByAgentId))
+            .join("")
+        : '<p class="platform-inline-note">当前还没有会议消息。</p>'}
+    </section>
+    <section class="platform-node-detail-section">
+      <h3>结论</h3>
+      ${resolutions.length > 0
+        ? resolutions
+            .sort((left, right) => compareTimestampDesc(left?.createdAt, right?.createdAt))
+            .map((resolution) => renderMeetingRoomResolutionCard(resolution))
+            .join("")
+        : '<p class="platform-inline-note">当前还没有会议结论。</p>'}
+    </section>
+  </div>`;
+}
+
+function renderMeetingRoomParticipantCard(participant) {
+  const chips = [
+    participant?.participantKind === "themis"
+      ? "Themis"
+      : (participant?.agentId || "managed-agent"),
+    `角色 ${participant?.roomRole === "host" ? "主持人" : "参与者"}`,
+    participant?.entryMode ? `入场 ${resolveMeetingRoomEntryModeLabel(participant.entryMode)}` : "",
+  ].filter(Boolean);
+
+  return `<article class="platform-node-detail-card">
+    <strong>${escapeHtml(participant?.displayName || participant?.agentId || "未命名参与者")}</strong>
+    <div class="platform-node-meta">
+      ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+    </div>
+  </article>`;
+}
+
+function renderMeetingRoomRoundCard(round) {
+  const chips = [
+    round?.roundId ? round.roundId : "",
+    round?.status ? `状态 ${resolveMeetingRoomRoundStatusLabel(round.status)}` : "",
+    `响应 ${Array.isArray(round?.respondedParticipantIds) ? round.respondedParticipantIds.length : 0}/${Array.isArray(round?.targetParticipantIds) ? round.targetParticipantIds.length : 0}`,
+  ].filter(Boolean);
+
+  return `<article class="platform-node-detail-card">
+    <strong>${escapeHtml(round?.roundId || "未命名轮次")}</strong>
+    <div class="platform-node-meta">
+      ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+    </div>
+    <span>${escapeHtml(round?.failureMessage || formatTimestamp(round?.updatedAt))}</span>
+  </article>`;
+}
+
+function renderMeetingRoomMessageCard(message, participantsByAgentId) {
+  const chips = [
+    message?.messageKind ? `类型 ${resolveMeetingRoomMessageKindLabel(message.messageKind)}` : "",
+    message?.audience ? `可见性 ${resolveMeetingRoomAudienceLabel(message.audience)}` : "",
+    formatTimestamp(message?.createdAt),
+  ].filter(Boolean);
+
+  return `<article class="platform-node-detail-card">
+    <strong>${escapeHtml(resolveMeetingRoomSpeakerLabel(message, participantsByAgentId))}</strong>
+    <div class="platform-node-meta">
+      ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+    </div>
+    <span>${renderMultilineText(message?.content)}</span>
+  </article>`;
+}
+
+function renderMeetingRoomResolutionCard(resolution) {
+  const chips = [
+    resolution?.resolutionId ? resolution.resolutionId : "",
+    resolution?.status ? `状态 ${resolveMeetingRoomResolutionStatusLabel(resolution.status)}` : "",
+    resolution?.promotedWorkItemId ? `工作项 ${resolution.promotedWorkItemId}` : "",
+  ].filter(Boolean);
+
+  return `<article class="platform-node-detail-card">
+    <strong>${escapeHtml(resolution?.title || resolution?.resolutionId || "未命名结论")}</strong>
+    <div class="platform-node-meta">
+      ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+    </div>
+    <span>${renderMultilineText(resolution?.summary)}</span>
+  </article>`;
+}
+
 function resolveNodeActions(node) {
   switch (node?.status) {
     case "online":
@@ -3199,6 +3652,113 @@ function resolveRecoveryActionLabel(action) {
     default:
       return typeof action === "string" ? action : "已处理";
   }
+}
+
+function isMeetingRoomReadOnly(status) {
+  return status === "closed" || status === "terminated";
+}
+
+function resolveMeetingRoomStatusLabel(status) {
+  switch (status) {
+    case "closing":
+      return "收口中";
+    case "closed":
+      return "已关闭";
+    case "terminated":
+      return "已终止";
+    default:
+      return "进行中";
+  }
+}
+
+function resolveMeetingRoomDiscussionModeLabel(mode) {
+  return mode === "collaborative" ? "协作模式" : "主持模式";
+}
+
+function resolveMeetingRoomEntryModeLabel(mode) {
+  switch (mode) {
+    case "active_work_context":
+      return "当前工作上下文";
+    case "selected_context":
+      return "指定上下文";
+    default:
+      return "空白入场";
+  }
+}
+
+function resolveMeetingRoomRoundStatusLabel(status) {
+  switch (status) {
+    case "queued":
+      return "排队中";
+    case "running":
+      return "进行中";
+    case "failed":
+      return "失败";
+    default:
+      return "已完成";
+  }
+}
+
+function resolveMeetingRoomMessageKindLabel(kind) {
+  switch (kind) {
+    case "status":
+      return "状态";
+    case "summary":
+      return "摘要";
+    case "error":
+      return "异常";
+    default:
+      return "消息";
+  }
+}
+
+function resolveMeetingRoomResolutionStatusLabel(status) {
+  switch (status) {
+    case "accepted":
+      return "已采纳";
+    case "promoted":
+      return "已提升";
+    default:
+      return "草稿";
+  }
+}
+
+function resolveMeetingRoomAudienceLabel(audience) {
+  switch (audience) {
+    case "themis_only":
+      return "仅 Themis";
+    case "selected_participants":
+      return "定向参与者";
+    default:
+      return "全员可见";
+  }
+}
+
+function resolveMeetingRoomSpeakerLabel(message, participantsByAgentId = new Map()) {
+  if (message?.speakerType === "themis") {
+    return "Themis";
+  }
+
+  if (message?.speakerType === "managed_agent") {
+    return participantsByAgentId.get(message?.speakerAgentId) || message?.speakerAgentId || "数字员工";
+  }
+
+  return "平台系统";
+}
+
+function compareTimestampAsc(left, right) {
+  const leftTime = typeof left === "string" ? new Date(left).getTime() : 0;
+  const rightTime = typeof right === "string" ? new Date(right).getTime() : 0;
+  return leftTime - rightTime;
+}
+
+function compareTimestampDesc(left, right) {
+  return compareTimestampAsc(right, left);
+}
+
+function renderMultilineText(value) {
+  const normalized = typeof value === "string" && value.trim() ? value : "暂无内容";
+  return escapeHtml(normalized).replace(/\n/g, "<br />");
 }
 
 function resolveNodeAttentionLabel(attention) {

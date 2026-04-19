@@ -118,6 +118,182 @@ test("initializePlatformSurface 会从 hash 恢复 view 并在切换时回写 ha
   assert.equal(hashes.at(-1), "#overview");
 });
 
+test("initializePlatformSurface 会加载会议室观察台并支持终止当前会议", async () => {
+  const requests = [];
+  const document = createDocumentStub();
+  const surface = initializePlatformSurface({
+    document,
+    locationHash: "#meeting-rooms",
+    fetch: async (url, init = {}) => {
+      requests.push({
+        url,
+        method: init.method ?? "GET",
+        body: init.body ? JSON.parse(init.body) : null,
+      });
+
+      if (url === "/api/web-auth/status") {
+        return createJsonResponse(200, { authenticated: true, tokenLabel: "platform-web" });
+      }
+
+      if (url === "/api/platform/meeting-rooms/list") {
+        return createJsonResponse(200, {
+          rooms: [{
+            roomId: "room-1",
+            title: "发布阻塞讨论",
+            goal: "确认 prod 发布失败根因",
+            status: "open",
+            discussionMode: "collaborative",
+            organizationId: "org-platform",
+            updatedAt: "2026-04-19T01:00:00.000Z",
+          }],
+        });
+      }
+
+      if (url === "/api/platform/meeting-rooms/detail") {
+        return createJsonResponse(200, {
+          room: {
+            roomId: "room-1",
+            title: "发布阻塞讨论",
+            goal: "确认 prod 发布失败根因",
+            status: "open",
+            discussionMode: "collaborative",
+            organizationId: "org-platform",
+            createdByOperatorPrincipalId: "principal-owner",
+            updatedAt: "2026-04-19T01:00:00.000Z",
+          },
+          participants: [{
+            participantId: "participant-1",
+            roomId: "room-1",
+            participantKind: "managed_agent",
+            agentId: "agent-backend",
+            displayName: "后端·衡",
+            roomRole: "participant",
+            entryMode: "blank",
+          }],
+          rounds: [{
+            roundId: "round-1",
+            roomId: "room-1",
+            triggerMessageId: "message-1",
+            status: "completed",
+            targetParticipantIds: ["participant-1"],
+            respondedParticipantIds: ["participant-1"],
+            createdAt: "2026-04-19T01:00:00.000Z",
+            updatedAt: "2026-04-19T01:00:20.000Z",
+          }],
+          messages: [{
+            messageId: "message-1",
+            roomId: "room-1",
+            speakerType: "themis",
+            audience: "all_participants",
+            content: "请直接给出发布失败根因。",
+            messageKind: "message",
+            createdAt: "2026-04-19T01:00:00.000Z",
+            updatedAt: "2026-04-19T01:00:00.000Z",
+          }, {
+            messageId: "message-2",
+            roomId: "room-1",
+            speakerType: "managed_agent",
+            speakerAgentId: "agent-backend",
+            audience: "all_participants",
+            content: "我判断是 migration 锁等待导致超时。",
+            messageKind: "message",
+            createdAt: "2026-04-19T01:00:20.000Z",
+            updatedAt: "2026-04-19T01:00:20.000Z",
+          }],
+          resolutions: [{
+            resolutionId: "resolution-1",
+            roomId: "room-1",
+            sourceMessageIds: ["message-2"],
+            title: "补 migration 重试",
+            summary: "先补重试和告警，再重新发版。",
+            status: "draft",
+            createdAt: "2026-04-19T01:00:40.000Z",
+            updatedAt: "2026-04-19T01:00:40.000Z",
+          }],
+          artifactRefs: [],
+        });
+      }
+
+      if (url === "/api/platform/meeting-rooms/terminate") {
+        return createJsonResponse(200, {
+          room: {
+            roomId: "room-1",
+            title: "发布阻塞讨论",
+            goal: "确认 prod 发布失败根因",
+            status: "terminated",
+            discussionMode: "collaborative",
+            organizationId: "org-platform",
+            createdByOperatorPrincipalId: "principal-owner",
+            updatedAt: "2026-04-19T01:02:00.000Z",
+            terminatedAt: "2026-04-19T01:02:00.000Z",
+            terminatedByOperatorPrincipalId: "principal-owner",
+            terminationReason: "平台值班判断当前讨论进入异常循环。",
+          },
+          participants: [],
+          rounds: [],
+          messages: [{
+            messageId: "message-3",
+            roomId: "room-1",
+            speakerType: "system",
+            audience: "all_participants",
+            content: "平台已终止会议：平台值班判断当前讨论进入异常循环。",
+            messageKind: "status",
+            createdAt: "2026-04-19T01:02:00.000Z",
+            updatedAt: "2026-04-19T01:02:00.000Z",
+          }],
+          resolutions: [],
+          artifactRefs: [],
+        });
+      }
+
+      return createJsonResponse(200, {
+        nodes: [],
+        runs: [],
+        workItems: [],
+        items: [],
+        summary: {},
+        managerHotspots: [],
+        parents: [],
+        organizations: [],
+        agents: [],
+        bindings: [],
+      });
+    },
+    storage: {
+      getItem() {
+        return "principal-owner";
+      },
+      setItem() {},
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(document.getElementById("platform-view-meeting-rooms").hidden, false);
+  assert.equal(document.getElementById("platform-nav-meeting-rooms").dataset.selected, "true");
+  assert.equal(document.getElementById("platform-meeting-rooms-total").textContent, "1");
+  assert.match(document.getElementById("platform-meeting-rooms-list").innerHTML, /发布阻塞讨论/);
+  assert.match(document.getElementById("platform-meeting-room-detail").innerHTML, /migration 锁等待导致超时/);
+
+  await surface.terminateMeetingRoom("room-1", "平台值班判断当前讨论进入异常循环。");
+
+  assert.deepEqual(requests.at(-1), {
+    url: "/api/platform/meeting-rooms/terminate",
+    method: "POST",
+    body: {
+      ownerPrincipalId: "principal-owner",
+      termination: {
+        roomId: "room-1",
+        operatorPrincipalId: "principal-owner",
+        terminationReason: "平台值班判断当前讨论进入异常循环。",
+      },
+    },
+  });
+  assert.equal(document.getElementById("platform-meeting-rooms-terminated").textContent, "1");
+  assert.equal(document.getElementById("platform-meeting-room-terminate-submit").disabled, true);
+  assert.match(document.getElementById("platform-meeting-room-detail").innerHTML, /终止原因/);
+});
+
 test("initializePlatformSurface 会对节点治理动作调用对应平台接口", async () => {
   const requests = [];
   const document = createDocumentStub();
@@ -1012,6 +1188,12 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
         });
       }
 
+      if (url === "/api/platform/meeting-rooms/list") {
+        return createJsonResponse(200, {
+          rooms: [],
+        });
+      }
+
       return createJsonResponse(404, {
         error: {
           message: "unexpected request",
@@ -1478,6 +1660,7 @@ function createDocumentStub() {
     "platform-nav-mailbox",
     "platform-nav-agents-projects",
     "platform-nav-collaboration-runs",
+    "platform-nav-meeting-rooms",
     "platform-nav-overview",
     "platform-view-nodes-oncall",
     "platform-view-governance",
@@ -1485,6 +1668,7 @@ function createDocumentStub() {
     "platform-view-mailbox",
     "platform-view-agents-projects",
     "platform-view-collaboration-runs",
+    "platform-view-meeting-rooms",
     "platform-view-overview",
     "platform-session-title",
     "platform-session-note",
@@ -1537,6 +1721,18 @@ function createDocumentStub() {
     "platform-runs-empty",
     "platform-runs-list",
     "platform-run-detail",
+    "platform-meeting-rooms-status",
+    "platform-meeting-rooms-action-status",
+    "platform-meeting-rooms-total",
+    "platform-meeting-rooms-open",
+    "platform-meeting-rooms-terminated",
+    "platform-meeting-rooms-closed",
+    "platform-meeting-rooms-empty",
+    "platform-meeting-rooms-list",
+    "platform-meeting-room-detail",
+    "platform-meeting-room-terminate-form",
+    "platform-meeting-room-terminate-reason-input",
+    "platform-meeting-room-terminate-submit",
     "platform-work-items-status",
     "platform-work-items-total",
     "platform-work-items-waiting-human",

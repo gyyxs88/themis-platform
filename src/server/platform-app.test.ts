@@ -1344,3 +1344,111 @@ test("POST /api/platform/meeting-rooms/* 会暴露会议室数据主链", async 
     await once(server, "close");
   }
 });
+
+test("POST /api/platform/meeting-rooms/terminate 会把会议室切到 terminated 并记录终止原因", async () => {
+  const controlPlaneService = createInMemoryPlatformControlPlaneService({
+    now: () => "2026-04-18T09:50:00.000Z",
+    generateOrganizationId: () => "org-1",
+    generatePrincipalId: () => "principal-agent-1",
+    generateAgentId: () => "agent-1",
+  });
+  const created = controlPlaneService.createAgent({
+    ownerPrincipalId: "principal-owner",
+    agent: {
+      organizationId: "org-1",
+      departmentRole: "后端工程",
+      displayName: "后端·衡",
+    },
+  });
+  const nodeService = createInMemoryPlatformNodeService({
+    organizations: [created.organization],
+  });
+  const workerRunService = createInMemoryPlatformWorkerRunService({
+    nodeService,
+  });
+  const workflowService = createInMemoryPlatformWorkflowService({
+    workerRunService,
+  });
+  workflowService.registerAgent({
+    ownerPrincipalId: "principal-owner",
+    organization: created.organization,
+    agent: created.agent,
+  });
+
+  const server = createPlatformApp({
+    accessMode: "open",
+    controlPlaneService,
+    nodeService,
+    workerRunService,
+    workflowService,
+  });
+
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("platform test server did not bind to an ipv4 port");
+    }
+
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const createResponse = await fetch(`${baseUrl}/api/platform/meeting-rooms/create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-owner",
+        room: {
+          title: "发布阻塞讨论",
+          goal: "确认 prod 发布失败的根因。",
+          operatorPrincipalId: "principal-owner",
+          organizationId: "org-1",
+          participants: [{
+            agentId: "agent-1",
+            entryMode: "blank",
+          }],
+        },
+      }),
+    });
+    assert.equal(createResponse.status, 200);
+    const createPayload = await createResponse.json() as {
+      room?: { roomId?: string };
+    };
+
+    const terminateResponse = await fetch(`${baseUrl}/api/platform/meeting-rooms/terminate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-owner",
+        termination: {
+          roomId: createPayload.room?.roomId,
+          operatorPrincipalId: "principal-owner",
+          terminationReason: "平台值班员判断当前讨论进入异常循环，先强制终止。",
+        },
+      }),
+    });
+
+    assert.equal(terminateResponse.status, 200);
+    const terminatePayload = await terminateResponse.json() as {
+      room?: { status?: string; terminationReason?: string };
+      messages?: Array<{ messageKind?: string; content?: string }>;
+    };
+    assert.equal(terminatePayload.room?.status, "terminated");
+    assert.equal(
+      terminatePayload.room?.terminationReason,
+      "平台值班员判断当前讨论进入异常循环，先强制终止。",
+    );
+    assert.match(
+      terminatePayload.messages?.at(-1)?.content ?? "",
+      /平台已终止会议/,
+    );
+    assert.equal(terminatePayload.messages?.at(-1)?.messageKind, "status");
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});
