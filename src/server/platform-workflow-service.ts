@@ -273,6 +273,7 @@ export function createInMemoryPlatformWorkflowService(
 
       return {
         organization: { ...organization },
+        targetAgent: { ...targetAgent },
         workItem: { ...workItem },
       };
     },

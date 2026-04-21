@@ -285,6 +285,9 @@ test("PlatformOncallService 会汇总节点、waiting、runs 与 paused agents �
     createAgent() {
       throw new Error("not implemented");
     },
+    updateAgentCard() {
+      return null;
+    },
     updateExecutionBoundary() {
       return null;
     },

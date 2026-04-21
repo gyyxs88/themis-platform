@@ -59,8 +59,10 @@ test("createPlatformApp 会暴露 agents 与 projects 最小控制面路由", as
     });
     assert.equal(dispatchResponse.status, 200);
     const dispatched = await dispatchResponse.json() as {
+      targetAgent?: { agentId?: string };
       workItem?: { targetAgentId?: string };
     };
+    assert.equal(dispatched.targetAgent?.agentId, "agent-alpha");
     assert.equal(dispatched.workItem?.targetAgentId, "agent-alpha");
 
     const listResponse = await fetch(`${baseUrl}/api/platform/agents/list`, {
@@ -101,6 +103,30 @@ test("createPlatformApp 会暴露 agents 与 projects 最小控制面路由", as
     assert.equal(detail.agent?.agentId, "agent-alpha");
     assert.equal(detail.agent?.agentCard?.title, "Platform");
     assert.equal(detail.agent?.agentCard?.responsibilitySummary, "负责平台控制面最小治理。");
+
+    const cardResponse = await fetch(`${baseUrl}/api/platform/agents/card/update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agentId: "agent-alpha",
+        card: {
+          domainTags: ["平台", "值班"],
+          currentFocus: "收口平台值班链路。",
+        },
+      }),
+    });
+    assert.equal(cardResponse.status, 200);
+    const card = await cardResponse.json() as {
+      agent?: {
+        agentCard?: {
+          currentFocus?: string;
+        };
+      };
+    };
+    assert.equal(card.agent?.agentCard?.currentFocus, "收口平台值班链路。");
 
     const boundaryResponse = await fetch(`${baseUrl}/api/platform/agents/execution-boundary/update`, {
       method: "POST",

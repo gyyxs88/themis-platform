@@ -1,4 +1,6 @@
 import type {
+  ManagedAgentPlatformAgentCardUpdatePayload,
+  ManagedAgentPlatformAgentCardUpdateResult,
   ManagedAgentPlatformAgentCreatePayload,
   ManagedAgentPlatformAgentCreateResult,
   ManagedAgentPlatformAgentDetailPayload,
@@ -48,6 +50,7 @@ export interface PlatformControlPlaneService {
   listAgents(input: { ownerPrincipalId: string }): ManagedAgentPlatformAgentListResult;
   getAgentDetail(input: ManagedAgentPlatformAgentDetailPayload): ManagedAgentPlatformAgentDetailResult | null;
   createAgent(input: ManagedAgentPlatformAgentCreatePayload): ManagedAgentPlatformAgentCreateResult;
+  updateAgentCard(input: ManagedAgentPlatformAgentCardUpdatePayload): ManagedAgentPlatformAgentCardUpdateResult | null;
   updateExecutionBoundary(
     input: ManagedAgentPlatformAgentExecutionBoundaryUpdatePayload,
   ): ManagedAgentPlatformAgentExecutionBoundaryUpdateResult | null;
@@ -372,6 +375,29 @@ export function createInMemoryPlatformControlPlaneService(
       };
     },
 
+    updateAgentCard(input) {
+      if (Object.keys(input.card).length === 0) {
+        throw new Error("At least one agent card field is required.");
+      }
+
+      const state = ensureOwnerState(input.ownerPrincipalId);
+      const agent = ensureAgentCard(state, input.agentId);
+
+      if (!agent?.agentCard) {
+        return null;
+      }
+
+      const timestamp = now();
+      const updatedAgent: ManagedAgentPlatformAgentRecord = {
+        ...agent,
+        agentCard: applyAgentCardPatch(agent.agentCard, input.card, timestamp),
+        updatedAt: timestamp,
+      };
+      state.agents.set(updatedAgent.agentId, updatedAgent);
+
+      return getAgentContext(input.ownerPrincipalId, updatedAgent.agentId);
+    },
+
     updateSpawnPolicy(input) {
       const state = ensureOwnerState(input.ownerPrincipalId);
       const timestamp = now();
@@ -484,6 +510,10 @@ function normalizeOptionalText(value: string | null | undefined) {
   return normalized || undefined;
 }
 
+function hasOwn<T extends object, K extends PropertyKey>(value: T, key: K): value is T & Record<K, unknown> {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
 function cloneWorkspacePolicy(
   policy: ManagedAgentPlatformWorkspacePolicyRecord,
 ): ManagedAgentPlatformWorkspacePolicyRecord {
@@ -524,6 +554,69 @@ function cloneAgentCard(
     forbiddenScopes: normalizeStringList(card.forbiddenScopes),
     representativeProjects: normalizeStringList(card.representativeProjects),
   };
+}
+
+function applyAgentCardPatch(
+  current: ManagedAgentPlatformAgentCardRecord,
+  patch: {
+    employeeCode?: string;
+    title?: string;
+    domainTags?: string[];
+    skillTags?: string[];
+    responsibilitySummary?: string;
+    allowedScopes?: string[];
+    forbiddenScopes?: string[];
+    workStyle?: string;
+    collaborationNotes?: string;
+    representativeProjects?: string[];
+    currentFocus?: string;
+    reviewSummary?: string;
+    lastReviewedAt?: string | null;
+  },
+  now: string,
+): ManagedAgentPlatformAgentCardRecord {
+  const next: ManagedAgentPlatformAgentCardRecord = {
+    ...current,
+    employeeCode: hasOwn(patch, "employeeCode")
+      ? normalizeText(patch.employeeCode ?? "")
+      : current.employeeCode,
+    title: hasOwn(patch, "title")
+      ? normalizeText(patch.title ?? "")
+      : current.title,
+    domainTags: hasOwn(patch, "domainTags") ? normalizeStringList(patch.domainTags) : current.domainTags,
+    skillTags: hasOwn(patch, "skillTags") ? normalizeStringList(patch.skillTags) : current.skillTags,
+    responsibilitySummary: hasOwn(patch, "responsibilitySummary")
+      ? normalizeText(patch.responsibilitySummary ?? "")
+      : current.responsibilitySummary,
+    allowedScopes: hasOwn(patch, "allowedScopes") ? normalizeStringList(patch.allowedScopes) : current.allowedScopes,
+    forbiddenScopes: hasOwn(patch, "forbiddenScopes")
+      ? normalizeStringList(patch.forbiddenScopes)
+      : current.forbiddenScopes,
+    representativeProjects: hasOwn(patch, "representativeProjects")
+      ? normalizeStringList(patch.representativeProjects)
+      : current.representativeProjects,
+    createdAt: current.createdAt,
+    updatedAt: now,
+    ...(current.reportLine ? { reportLine: { ...current.reportLine } } : {}),
+  };
+
+  applyOptionalCardTextPatch(next, current, patch, "workStyle");
+  applyOptionalCardTextPatch(next, current, patch, "collaborationNotes");
+  applyOptionalCardTextPatch(next, current, patch, "currentFocus");
+  applyOptionalCardTextPatch(next, current, patch, "reviewSummary");
+
+  if (hasOwn(patch, "lastReviewedAt")) {
+    const lastReviewedAt = normalizeOptionalText(patch.lastReviewedAt ?? null);
+    if (lastReviewedAt) {
+      next.lastReviewedAt = lastReviewedAt;
+    } else {
+      delete next.lastReviewedAt;
+    }
+  } else if (current.lastReviewedAt) {
+    next.lastReviewedAt = current.lastReviewedAt;
+  }
+
+  return next;
 }
 
 function ensureAgentCard(
@@ -612,6 +705,28 @@ function normalizeStringList(values: string[] | undefined): string[] {
     .filter((value): value is string => Boolean(value));
 
   return Array.from(new Set(normalized));
+}
+
+function applyOptionalCardTextPatch(
+  next: ManagedAgentPlatformAgentCardRecord,
+  current: ManagedAgentPlatformAgentCardRecord,
+  patch: Record<string, unknown>,
+  key: "workStyle" | "collaborationNotes" | "currentFocus" | "reviewSummary",
+): void {
+  if (hasOwn(patch, key)) {
+    const raw = patch[key];
+    const value = typeof raw === "string" || raw == null ? normalizeOptionalText(raw) : undefined;
+    if (value) {
+      next[key] = value;
+    } else {
+      delete next[key];
+    }
+    return;
+  }
+
+  if (current[key]) {
+    next[key] = current[key];
+  }
 }
 
 function groupByAgentId<T extends { agentId: string }>(records: T[]): Array<[string, T[]]> {

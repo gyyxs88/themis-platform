@@ -13,6 +13,7 @@ import type {
   ManagedAgentPlatformWorkerRunStatusPayload,
 } from "themis-contracts/managed-agent-platform-worker";
 import type {
+  ManagedAgentPlatformAgentCardUpdatePayload,
   ManagedAgentPlatformAgentCreatePayload,
   ManagedAgentPlatformAgentDetailPayload,
   ManagedAgentPlatformAgentExecutionBoundaryUpdatePayload,
@@ -397,6 +398,19 @@ async function handlePlatformRequest(
         return;
       }
       const result = options.controlPlaneService.updateExecutionBoundary(payload);
+      if (!result) {
+        return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
+      }
+      await recordStateMutation(options);
+      return writeJson(response, 200, result);
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/agents/card/update") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformAgentCardUpdatePayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.controlPlaneService.updateAgentCard(payload);
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
       }

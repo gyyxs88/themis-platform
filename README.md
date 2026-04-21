@@ -6,7 +6,7 @@
 
 - 当前入口：`src/server/platform-main.ts`
 - 独立 CLI：仓库根目录 `./themis-platform`
-- 当前状态：已具备最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 控制面、`projects/workspace-binding/list|detail|upsert` 项目绑定、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 治理读面、`oncall/summary` 值班建议、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`meeting-rooms/list|create|detail|participants/add|messages/create|append-agent-reply|append-agent-failure|resolutions/create|promote|close|terminate` 平台内部会议室控制面、`Web Access + Platform Service Bearer` 鉴权链，以及 `worker/runs/pull|update|complete` 自动调度执行链路；当前平台页已新增“会议室观察台”，支持直接查看房间、轮次、消息、结论与参与者，并在必要时强制终止会议，而 `worker pull` 已能把 `queued work-item` 结合项目工作区绑定自动分配成新 `run + execution lease`
+- 当前状态：已具备最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|card/update|execution-boundary/update|spawn-policy/update|pause|resume|archive` 控制面、`projects/workspace-binding/list|detail|upsert` 项目绑定、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 治理读面、`oncall/summary` 值班建议、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`meeting-rooms/list|create|detail|participants/add|messages/create|append-agent-reply|append-agent-failure|resolutions/create|promote|close|terminate` 平台内部会议室控制面、`Web Access + Platform Service Bearer` 鉴权链，以及 `worker/runs/pull|update|complete` 自动调度执行链路；当前平台页已新增“会议室观察台”，支持直接查看房间、轮次、消息、结论与参与者，并在必要时强制终止会议，而 `worker pull` 已能把 `queued work-item` 结合项目工作区绑定自动分配成新 `run + execution lease`
 
 当前最小能力：
 
@@ -15,7 +15,7 @@
 - `GET /api/health` 返回 `themis-platform` 服务状态
 - `GET /login`、`POST /api/web-auth/login|logout`、`GET /api/web-auth/status` 提供最小平台 Web 登录态
 - `POST /api/platform/nodes/register|heartbeat|list|detail|drain|offline|reclaim` 提供最小节点控制面 API
-- `POST /api/platform/agents/list|detail|create|execution-boundary/update|spawn-policy/update|pause|resume|archive` 提供最小 agents 控制面 API
+- `POST /api/platform/agents/list|detail|create|card/update|execution-boundary/update|spawn-policy/update|pause|resume|archive` 提供最小 agents 控制面 API
 - `POST /api/platform/projects/workspace-binding/list|detail|upsert` 提供最小项目工作区绑定 API
 - `POST /api/platform/agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 提供最小治理摘要、父任务协作分组与 handoff 时间线 API
 - `POST /api/platform/oncall/summary` 提供最小值班建议汇总 API
