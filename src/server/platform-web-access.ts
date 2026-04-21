@@ -390,11 +390,21 @@ function isPlatformPathAllowedForRole(pathname: string, role: PlatformServiceRol
       || pathname.startsWith("/api/platform/meeting-rooms/")
       || pathname.startsWith("/api/platform/work-items/")
       || pathname.startsWith("/api/platform/runs/")
-      || pathname.startsWith("/api/platform/projects/");
+      || pathname.startsWith("/api/platform/projects/")
+      || isGatewayNodeManagementPath(pathname);
   }
 
   return pathname.startsWith("/api/platform/nodes/")
     || pathname.startsWith("/api/platform/worker/");
+}
+
+function isGatewayNodeManagementPath(pathname: string): boolean {
+  return pathname === "/api/platform/nodes/list"
+    || pathname === "/api/platform/nodes/detail"
+    || pathname === "/api/platform/nodes/drain"
+    || pathname === "/api/platform/nodes/offline"
+    || pathname === "/api/platform/nodes/reclaim"
+    || pathname === "/api/platform/nodes/delete";
 }
 
 function resolveWebAccessRouteOptions(options: PlatformWebAccessRouteOptions): { appDisplayName: string } {
