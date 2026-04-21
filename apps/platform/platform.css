@@ -523,6 +523,7 @@ textarea {
 .platform-node-detail-card strong {
   font-size: 20px;
   line-height: 1;
+  word-break: break-word;
 }
 
 .platform-node-detail-list {
@@ -580,6 +581,66 @@ textarea {
   border-radius: 10px;
   background: rgba(23, 25, 21, 0.06);
   font-size: 12px;
+}
+
+.platform-execution-heading {
+  margin: 0;
+  font-size: 15px;
+}
+
+.platform-execution-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.platform-code-block {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--platform-line);
+  border-radius: 18px;
+  background: rgba(21, 33, 28, 0.94);
+  color: rgba(240, 244, 239, 0.96);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.platform-execution-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.platform-execution-list li {
+  color: var(--platform-text);
+  word-break: break-word;
+}
+
+.platform-execution-artifact {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--platform-line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.platform-execution-artifact summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.platform-execution-artifact summary::-webkit-details-marker {
+  display: none;
 }
 
 .platform-node-action-result {

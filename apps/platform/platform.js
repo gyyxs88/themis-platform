@@ -3013,6 +3013,7 @@ function renderWorkItemDetail(detail) {
     detail?.parentWorkItem?.workItemId || "",
   ].filter(Boolean).join(" / ") || "无";
   const latestHandoffLabel = detail?.latestHandoff?.summary || detail?.latestHandoff?.handoffId || "暂无";
+  const latestCompletedRunId = resolveLatestCompletedRunId(detail?.runs);
 
   return `<div>
     <div class="platform-node-head">
@@ -3026,6 +3027,11 @@ function renderWorkItemDetail(detail) {
     <p class="platform-inline-note">父任务：${escapeHtml(parentDescriptor)}</p>
     <p class="platform-inline-note">最近 handoff：${escapeHtml(latestHandoffLabel)}</p>
     <p class="platform-inline-note">最近更新时间：${escapeHtml(formatTimestamp(detail?.workItem?.updatedAt))}</p>
+    ${renderCompletionDetail(detail?.latestCompletion, {
+      heading: "最近一次完成详情",
+      emptyText: "当前还没有已完成 run 回传可展示的执行详情。",
+      runId: latestCompletedRunId,
+    })}
   </div>`;
 }
 
@@ -3344,7 +3350,221 @@ function renderRunDetail(detail) {
     </div>
     <p class="platform-inline-note">当前 goal：${escapeHtml(detail?.workItem?.goal || "暂无 goal")}</p>
     <p class="platform-inline-note">最近更新时间：${escapeHtml(formatTimestamp(detail?.run?.updatedAt))}</p>
+    ${renderCompletionDetail(detail?.completionResult, {
+      heading: "执行详情",
+      emptyText: "当前 run 还没有完成结果，暂时无法展示完整执行详情。",
+      runId: normalizeOptionalText(detail?.run?.runId),
+    })}
   </div>`;
+}
+
+function renderCompletionDetail(completion, options = {}) {
+  const heading = normalizeOptionalText(options?.heading) || "执行详情";
+  const emptyText = normalizeOptionalText(options?.emptyText) || "当前还没有可展示的执行详情。";
+
+  if (!completion || typeof completion !== "object") {
+    return `<section class="platform-node-detail-section">
+      <h3>${escapeHtml(heading)}</h3>
+      <p class="platform-inline-note">${escapeHtml(emptyText)}</p>
+    </section>`;
+  }
+
+  const structuredOutput = readRecord(completion.structuredOutput);
+  const artifactContents = readRecord(structuredOutput?.artifactContents);
+  const deliverable = normalizeOptionalText(structuredOutput?.deliverable)
+    || normalizeOptionalText(readExecutionArtifactSnapshot(artifactContents?.deliverable)?.content)
+    || normalizeOptionalText(completion.summary)
+    || "暂无交付正文。";
+  const summary = normalizeOptionalText(completion.summary) || "当前没有额外摘要。";
+  const runId = normalizeOptionalText(options?.runId);
+  const provider = normalizeOptionalText(structuredOutput?.provider);
+  const model = normalizeOptionalText(structuredOutput?.model);
+  const workspacePath = normalizeOptionalText(structuredOutput?.workspacePath);
+  const completedAt = normalizeOptionalText(completion.completedAt);
+  const touchedFiles = readStringArray(completion.touchedFiles);
+  const artifactPaths = readStringArray(structuredOutput?.artifactPaths);
+  const resolvedArtifactPaths = readStringArray(structuredOutput?.resolvedArtifactPaths);
+  const followUp = readStringArray(structuredOutput?.followUp);
+  const workspaceSampleEntries = readStringArray(structuredOutput?.workspaceSampleEntries);
+  const metadataCards = [
+    {
+      label: "runId",
+      value: runId || "未知",
+    },
+    {
+      label: "完成时间",
+      value: completedAt ? formatTimestamp(completedAt) : "未知",
+    },
+    {
+      label: "provider / model",
+      value: provider || model ? `${provider || "未配置"} / ${model || "未配置"}` : "未配置",
+    },
+    {
+      label: "workspace",
+      value: workspacePath || "未知",
+    },
+    {
+      label: "工作区样本",
+      value: workspaceSampleEntries.length > 0
+        ? `${normalizeNumber(structuredOutput?.workspaceEntryCount, workspaceSampleEntries.length)} 项`
+        : "暂无",
+    },
+    {
+      label: "Git 分支",
+      value: normalizeOptionalText(structuredOutput?.git?.branch) || "未知",
+    },
+    {
+      label: "Git 变更数",
+      value: String(normalizeNumber(structuredOutput?.git?.changedFileCount, 0)),
+    },
+    {
+      label: "touchedFiles",
+      value: String(touchedFiles.length),
+    },
+  ];
+  const artifactPanels = [
+    renderExecutionArtifactPanel(readExecutionArtifactSnapshot(artifactContents?.prompt)),
+    renderExecutionArtifactPanel(readExecutionArtifactSnapshot(artifactContents?.output)),
+    renderExecutionArtifactPanel(readExecutionArtifactSnapshot(artifactContents?.result)),
+    renderExecutionArtifactPanel(readExecutionArtifactSnapshot(artifactContents?.report)),
+    renderExecutionArtifactPanel(readExecutionArtifactSnapshot(artifactContents?.stdout)),
+    renderExecutionArtifactPanel(readExecutionArtifactSnapshot(artifactContents?.stderr)),
+  ].filter(Boolean).join("");
+
+  return `<section class="platform-node-detail-section">
+    <h3>${escapeHtml(heading)}</h3>
+    <p class="platform-inline-note">这里展示的是 worker 完成时直接回传给平台的执行快照，便于管理者看到完整过程，而不是只看结果摘要。</p>
+    <div class="platform-node-head">
+      <div>
+        <h4 class="platform-execution-heading">完成摘要</h4>
+        <p class="platform-inline-note">${escapeHtml(summary)}</p>
+      </div>
+      <div class="platform-node-meta">
+        ${completedAt ? `<span class="platform-chip">${escapeHtml(formatTimestamp(completedAt))}</span>` : ""}
+        ${runId ? `<span class="platform-chip">${escapeHtml(runId)}</span>` : ""}
+      </div>
+    </div>
+    <div class="platform-node-detail-grid">
+      ${metadataCards.map((item) => `<div class="platform-node-detail-card">
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.value)}</strong>
+      </div>`).join("")}
+    </div>
+    <div class="platform-execution-panel">
+      <h4 class="platform-execution-heading">完整交付</h4>
+      <pre class="platform-code-block">${escapeHtml(deliverable)}</pre>
+    </div>
+    ${renderStringListSection("后续建议", followUp, "当前没有后续建议。")}
+    ${renderStringListSection("声明 artifactPaths", artifactPaths, "当前没有声明 artifactPaths。")}
+    ${renderStringListSection("已解析 artifact 路径", resolvedArtifactPaths, "当前没有可展示的 artifact 路径。")}
+    ${renderStringListSection("touchedFiles", touchedFiles, "当前没有回传 touchedFiles。")}
+    ${renderStringListSection("工作区样本", workspaceSampleEntries, "当前没有工作区样本。")}
+    ${renderJsonSection("完成输出对象", completion.output)}
+    ${renderJsonSection("运行时上下文", structuredOutput?.runtimeContext)}
+    ${renderJsonSection("Git 摘要", structuredOutput?.git)}
+    ${artifactPanels || `<p class="platform-inline-note">当前没有额外 artifact 内容快照。</p>`}
+  </section>`;
+}
+
+function renderExecutionArtifactPanel(artifact) {
+  if (!artifact) {
+    return "";
+  }
+
+  const chips = [
+    artifact.mediaType ? `类型 ${artifact.mediaType}` : "",
+    artifact.byteLength > 0 ? `${artifact.byteLength} bytes` : "",
+    artifact.truncated ? "已截断" : "完整",
+  ].filter(Boolean);
+
+  return `<details class="platform-execution-artifact" open>
+    <summary>
+      <span>${escapeHtml(artifact.label)}</span>
+      <span class="platform-node-meta">
+        ${chips.map((chip) => `<span class="platform-chip">${escapeHtml(chip)}</span>`).join("")}
+      </span>
+    </summary>
+    <p class="platform-inline-note">来源文件：${escapeHtml(artifact.filePath || "未知")}</p>
+    <pre class="platform-code-block">${escapeHtml(artifact.content)}</pre>
+  </details>`;
+}
+
+function renderStringListSection(title, items, emptyText) {
+  const values = Array.isArray(items)
+    ? items.filter((item) => typeof item === "string" && item.trim())
+    : [];
+
+  return `<section class="platform-node-detail-section">
+    <h4 class="platform-execution-heading">${escapeHtml(title)}</h4>
+    ${values.length > 0
+      ? `<ul class="platform-execution-list">${values.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+      : `<p class="platform-inline-note">${escapeHtml(emptyText)}</p>`}
+  </section>`;
+}
+
+function renderJsonSection(title, value) {
+  const content = stringifyJsonForDisplay(value);
+
+  if (!content) {
+    return "";
+  }
+
+  return `<section class="platform-node-detail-section">
+    <h4 class="platform-execution-heading">${escapeHtml(title)}</h4>
+    <pre class="platform-code-block">${escapeHtml(content)}</pre>
+  </section>`;
+}
+
+function resolveLatestCompletedRunId(runs) {
+  return (Array.isArray(runs) ? runs : [])
+    .filter((run) => typeof run?.runId === "string" && run.runId.trim())
+    .slice()
+    .sort((left, right) => String(right?.updatedAt ?? "").localeCompare(String(left?.updatedAt ?? "")))
+    .find((run) => run?.status === "completed")?.runId
+    ?? (Array.isArray(runs) ? runs[0]?.runId : "")
+    ?? "";
+}
+
+function readRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : null;
+}
+
+function readStringArray(value) {
+  return Array.isArray(value)
+    ? value.filter((item) => typeof item === "string" && item.trim())
+    : [];
+}
+
+function readExecutionArtifactSnapshot(value) {
+  const artifact = readRecord(value);
+  const content = normalizeOptionalText(artifact?.content);
+
+  if (!artifact || !content) {
+    return null;
+  }
+
+  return {
+    label: normalizeOptionalText(artifact.label) || "未命名 artifact",
+    filePath: normalizeOptionalText(artifact.filePath) || "",
+    mediaType: normalizeOptionalText(artifact.mediaType) || "",
+    content,
+    truncated: Boolean(artifact.truncated),
+    byteLength: normalizeNumber(artifact.byteLength, 0),
+  };
+}
+
+function stringifyJsonForDisplay(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 function renderMeetingRoomCard(room, selectedMeetingRoomId) {

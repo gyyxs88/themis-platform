@@ -1261,6 +1261,245 @@ test("initializePlatformSurface 会读取治理摘要、waiting queue 和 recent
   assert.equal(document.getElementById("platform-projects-empty").hidden, true);
 });
 
+test("initializePlatformSurface 会在 work-item 和 run 详情渲染完整执行快照", async () => {
+  const document = createDocumentStub();
+  const completionSnapshot = {
+    summary: "已完成 DNS 与公网返回态核查。",
+    output: {
+      reportFile: "/srv/worker-runs/run-42/report.json",
+      resultFile: "/srv/worker-runs/run-42/result.json",
+    },
+    touchedFiles: [
+      "/srv/worker-runs/run-42/prompt.txt",
+      "/srv/worker-runs/run-42/result.json",
+      "/srv/worker-runs/run-42/report.json",
+    ],
+    completedAt: "2026-04-21T14:40:00.000Z",
+    structuredOutput: {
+      deliverable: "结论：站点应保留，当前 DNS 与源站返回都正常。",
+      artifactPaths: ["reports/site-foo.md"],
+      resolvedArtifactPaths: ["/srv/site-foo/reports/site-foo.md"],
+      followUp: ["继续观察 24 小时内的波动。"],
+      workspacePath: "/srv/site-foo",
+      workspaceEntryCount: 4,
+      workspaceSampleEntries: ["README.md", "reports/", "package.json"],
+      provider: "openai",
+      model: "gpt-5.4-mini",
+      runtimeContext: {
+        contextFile: "/srv/worker-runtime/run-42/runtime-context.json",
+      },
+      git: {
+        branch: "main",
+        changedFileCount: 2,
+      },
+      artifactContents: {
+        prompt: {
+          label: "执行 prompt",
+          filePath: "/srv/worker-runs/run-42/prompt.txt",
+          mediaType: "text/plain",
+          content: "请核实 DNS、Cloudflare 与公网返回态。",
+          truncated: false,
+          byteLength: 24,
+        },
+        output: {
+          label: "Codex 最后输出",
+          filePath: "/srv/worker-runs/run-42/last-message.txt",
+          mediaType: "text/plain",
+          content: "最终确认站点可以继续保留。",
+          truncated: false,
+          byteLength: 18,
+        },
+        result: {
+          label: "结构化结果",
+          filePath: "/srv/worker-runs/run-42/result.json",
+          mediaType: "application/json",
+          content: "{\n  \"summary\": \"已完成 DNS 与公网返回态核查。\"\n}",
+          truncated: false,
+          byteLength: 54,
+        },
+        report: {
+          label: "执行报告",
+          filePath: "/srv/worker-runs/run-42/report.json",
+          mediaType: "application/json",
+          content: "{\n  \"git\": {\n    \"branch\": \"main\"\n  }\n}",
+          truncated: false,
+          byteLength: 42,
+        },
+        stdout: {
+          label: "标准输出",
+          filePath: "/srv/worker-runs/run-42/stdout.log",
+          mediaType: "text/plain",
+          content: "worker stdout line 1\nworker stdout line 2",
+          truncated: false,
+          byteLength: 39,
+        },
+        stderr: {
+          label: "标准错误",
+          filePath: "/srv/worker-runs/run-42/stderr.log",
+          mediaType: "text/plain",
+          content: "worker stderr warning",
+          truncated: false,
+          byteLength: 21,
+        },
+      },
+    },
+  };
+
+  initializePlatformSurface({
+    document,
+    fetch: async (url) => {
+      if (url === "/api/web-auth/status") {
+        return createJsonResponse(200, { authenticated: true, tokenLabel: "platform-web" });
+      }
+
+      if (url === "/api/platform/nodes/list") {
+        return createJsonResponse(200, { nodes: [] });
+      }
+
+      if (url === "/api/platform/oncall/summary") {
+        return createJsonResponse(200, {});
+      }
+
+      if (url === "/api/platform/agents/governance-overview") {
+        return createJsonResponse(200, { summary: {}, managerHotspots: [] });
+      }
+
+      if (url === "/api/platform/agents/waiting/list") {
+        return createJsonResponse(200, { summary: {}, items: [] });
+      }
+
+      if (url === "/api/platform/agents/collaboration-dashboard") {
+        return createJsonResponse(200, { summary: {}, parents: [] });
+      }
+
+      if (url === "/api/platform/runs/list") {
+        return createJsonResponse(200, {
+          runs: [{
+            runId: "run-42",
+            organizationId: "org-platform",
+            workItemId: "work-item-42",
+            nodeId: "node-alpha",
+            status: "completed",
+            updatedAt: "2026-04-21T14:40:00.000Z",
+          }],
+        });
+      }
+
+      if (url === "/api/platform/runs/detail") {
+        return createJsonResponse(200, {
+          run: {
+            runId: "run-42",
+            organizationId: "org-platform",
+            workItemId: "work-item-42",
+            nodeId: "node-alpha",
+            status: "completed",
+            updatedAt: "2026-04-21T14:40:00.000Z",
+          },
+          workItem: {
+            workItemId: "work-item-42",
+            goal: "核实 site-foo 当前是否应继续保留。",
+          },
+          targetAgent: {
+            displayName: "站点治理负责人",
+          },
+          completionResult: completionSnapshot,
+        });
+      }
+
+      if (url === "/api/platform/work-items/list") {
+        return createJsonResponse(200, {
+          workItems: [{
+            workItemId: "work-item-42",
+            organizationId: "org-platform",
+            targetAgentId: "agent-ops",
+            sourceType: "human",
+            goal: "核实 site-foo 当前是否应继续保留。",
+            status: "completed",
+            priority: "high",
+            updatedAt: "2026-04-21T14:40:00.000Z",
+          }],
+        });
+      }
+
+      if (url === "/api/platform/work-items/detail") {
+        return createJsonResponse(200, {
+          workItem: {
+            workItemId: "work-item-42",
+            organizationId: "org-platform",
+            targetAgentId: "agent-ops",
+            sourceType: "human",
+            goal: "核实 site-foo 当前是否应继续保留。",
+            status: "completed",
+            priority: "high",
+            updatedAt: "2026-04-21T14:40:00.000Z",
+          },
+          targetAgent: {
+            agentId: "agent-ops",
+            displayName: "站点治理负责人",
+          },
+          runs: [{
+            runId: "run-42",
+            status: "completed",
+            updatedAt: "2026-04-21T14:40:00.000Z",
+          }],
+          latestCompletion: completionSnapshot,
+        });
+      }
+
+      if (url === "/api/platform/agents/mailbox/list") {
+        return createJsonResponse(200, {
+          agent: {
+            agentId: "agent-ops",
+            displayName: "站点治理负责人",
+          },
+          items: [],
+        });
+      }
+
+      if (url === "/api/platform/agents/list") {
+        return createJsonResponse(200, {
+          organizations: [],
+          agents: [],
+        });
+      }
+
+      if (url === "/api/platform/projects/workspace-binding/list") {
+        return createJsonResponse(200, { bindings: [] });
+      }
+
+      if (url === "/api/platform/meeting-rooms/list") {
+        return createJsonResponse(200, { rooms: [] });
+      }
+
+      return createJsonResponse(404, {
+        error: {
+          message: `unexpected request: ${url}`,
+        },
+      });
+    },
+    storage: {
+      getItem() {
+        return "principal-owner";
+      },
+      setItem() {},
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.match(document.getElementById("platform-work-item-detail").innerHTML, /最近一次完成详情/);
+  assert.match(document.getElementById("platform-work-item-detail").innerHTML, /结论：站点应保留/);
+  assert.match(document.getElementById("platform-work-item-detail").innerHTML, /执行 prompt/);
+  assert.match(document.getElementById("platform-work-item-detail").innerHTML, /worker stdout line 1/);
+  assert.match(document.getElementById("platform-work-item-detail").innerHTML, /继续观察 24 小时内的波动/);
+  assert.match(document.getElementById("platform-run-detail").innerHTML, /执行详情/);
+  assert.match(document.getElementById("platform-run-detail").innerHTML, /Codex 最后输出/);
+  assert.match(document.getElementById("platform-run-detail").innerHTML, /最终确认站点可以继续保留/);
+  assert.match(document.getElementById("platform-run-detail").innerHTML, /结构化结果/);
+  assert.match(document.getElementById("platform-run-detail").innerHTML, /worker stderr warning/);
+  assert.match(document.getElementById("platform-run-detail").innerHTML, /runtime-context\.json/);
+});
+
 test("summarizeReclaimResult 会归一化 reclaim summary", () => {
   assert.deepEqual(summarizeReclaimResult({
     summary: {
