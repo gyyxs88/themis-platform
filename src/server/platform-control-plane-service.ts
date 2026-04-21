@@ -190,6 +190,49 @@ export function createInMemoryPlatformControlPlaneService(
     return organization;
   };
 
+  const resolveCreateAgentOrganization = (
+    ownerPrincipalId: string,
+    state: OwnerControlPlaneState,
+    input: {
+      organizationId?: string;
+      supervisorAgentId?: string;
+    },
+  ): ManagedAgentPlatformOrganizationRecord => {
+    const explicitOrganizationId = normalizeOptionalText(input.organizationId);
+
+    if (explicitOrganizationId) {
+      return ensureOrganization(ownerPrincipalId, state, explicitOrganizationId);
+    }
+
+    const supervisorAgentId = normalizeOptionalText(input.supervisorAgentId);
+
+    if (supervisorAgentId) {
+      const supervisorAgent = ensureAgentCard(state, supervisorAgentId);
+
+      if (!supervisorAgent) {
+        throw new Error(`Supervisor agent ${supervisorAgentId} not found.`);
+      }
+
+      const supervisorOrganization = state.organizations.get(supervisorAgent.organizationId);
+
+      if (!supervisorOrganization) {
+        throw new Error(`Organization ${supervisorAgent.organizationId} not found.`);
+      }
+
+      return supervisorOrganization;
+    }
+
+    if (state.organizations.size === 0) {
+      return ensureOrganization(ownerPrincipalId, state);
+    }
+
+    if (state.organizations.size === 1) {
+      return Array.from(state.organizations.values())[0]!;
+    }
+
+    throw new Error("organizationId is required when owner has multiple organizations and no supervisorAgentId.");
+  };
+
   const getAgentContext = (
     ownerPrincipalId: string,
     agentId: string,
@@ -285,7 +328,20 @@ export function createInMemoryPlatformControlPlaneService(
 
     createAgent(input) {
       const state = ensureOwnerState(input.ownerPrincipalId);
-      const organization = ensureOrganization(input.ownerPrincipalId, state, input.agent.organizationId);
+      const supervisorAgentId = normalizeOptionalText(input.agent.supervisorAgentId);
+      const organization = resolveCreateAgentOrganization(input.ownerPrincipalId, state, {
+        organizationId: input.agent.organizationId,
+        supervisorAgentId,
+      });
+      const supervisorAgent = supervisorAgentId ? ensureAgentCard(state, supervisorAgentId) : null;
+
+      if (supervisorAgent && supervisorAgent.organizationId !== organization.organizationId) {
+        throw new Error(
+          `Supervisor agent ${supervisorAgent.agentId} belongs to organization ${supervisorAgent.organizationId},`
+          + ` not ${organization.organizationId}.`,
+        );
+      }
+
       const timestamp = now();
       const principalId = generatePrincipalId();
       const agentId = generateAgentId();
@@ -304,7 +360,7 @@ export function createInMemoryPlatformControlPlaneService(
         departmentRole: normalizeText(input.agent.departmentRole),
         mission: normalizeOptionalText(input.agent.mission),
         status: "active",
-        supervisorAgentId: normalizeOptionalText(input.agent.supervisorAgentId),
+        supervisorAgentId: supervisorAgent?.agentId,
         createdAt: timestamp,
         updatedAt: timestamp,
       };
