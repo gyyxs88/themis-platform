@@ -291,6 +291,88 @@ test("PlatformWorkflowService 会优先返回 assigned run 上的最新 work-ite
   assert.equal(detailPayload?.runs?.[0]?.status, "completed");
 });
 
+test("PlatformWorkflowService 会在已有 snapshot 基础上继续递增 work-item / mailbox / message id", () => {
+  const organization = buildOrganization();
+  const frontendAgent = buildAgent("agent-frontend", "平台前端");
+  const backendAgent = buildAgent("agent-backend", "平台后端");
+  const nodeService = createInMemoryPlatformNodeService({
+    organizations: [organization],
+  });
+  const workerRunService = createInMemoryPlatformWorkerRunService({
+    nodeService,
+  });
+  const workflowService = createInMemoryPlatformWorkflowService({
+    workerRunService,
+    now: () => "2026-04-21T11:10:00.000Z",
+    agentSeeds: [
+      {
+        ownerPrincipalId: "principal-platform-owner",
+        organization,
+        agent: frontendAgent,
+      },
+      {
+        ownerPrincipalId: "principal-platform-owner",
+        organization,
+        agent: backendAgent,
+      },
+    ],
+    workItemSeeds: [{
+      ownerPrincipalId: "principal-platform-owner",
+      organization,
+      targetAgent: frontendAgent,
+      workItem: {
+        workItemId: "work-item-platform-12",
+        organizationId: organization.organizationId,
+        targetAgentId: frontendAgent.agentId,
+        sourceType: "human",
+        goal: "旧工单",
+        status: "queued",
+        priority: "normal",
+        createdAt: "2026-04-21T11:00:00.000Z",
+        updatedAt: "2026-04-21T11:00:00.000Z",
+      },
+    }],
+    mailboxSeeds: [
+      buildMailboxSeed({
+        organization,
+        agent: frontendAgent,
+        mailboxEntryId: "mailbox-entry-platform-7",
+        messageId: "message-platform-8",
+        workItemId: "work-item-platform-12",
+        fromAgentId: backendAgent.agentId,
+        toAgentId: frontendAgent.agentId,
+        summary: "请确认旧工单。",
+        priority: "normal",
+        createdAt: "2026-04-21T11:00:00.000Z",
+      }),
+    ],
+  });
+
+  const dispatched = workflowService.dispatchWorkItem({
+    ownerPrincipalId: "principal-platform-owner",
+    workItem: {
+      targetAgentId: frontendAgent.agentId,
+      sourceType: "human",
+      goal: "新建工单应继续递增。",
+      priority: "normal",
+    },
+  });
+  assert.equal(dispatched.workItem.workItemId, "work-item-platform-13");
+
+  const responded = workflowService.respondMailbox({
+    ownerPrincipalId: "principal-platform-owner",
+    agentId: frontendAgent.agentId,
+    mailboxEntryId: "mailbox-entry-platform-7",
+    response: {
+      decision: "approve",
+      inputText: "收到，继续执行。",
+      priority: "normal",
+    },
+  });
+  assert.equal(responded?.responseMessage.messageId, "message-platform-9");
+  assert.equal(responded?.responseMailboxEntry.mailboxEntryId, "mailbox-entry-platform-8");
+});
+
 function buildOrganization() {
   return {
     organizationId: "org-platform",

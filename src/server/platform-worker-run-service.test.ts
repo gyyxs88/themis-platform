@@ -189,3 +189,131 @@ test("createInMemoryPlatformWorkerRunService 会支持 pull / update / complete 
   assert.equal(completed?.executionLease.status, "released");
   assert.equal(completed?.targetAgent.agentId, "agent-a");
 });
+
+test("createInMemoryPlatformWorkerRunService 会在已有 snapshot 基础上继续递增 run / lease id", () => {
+  const nodeService = createInMemoryPlatformNodeService({
+    now: () => "2026-04-21T11:00:00.000Z",
+    nodes: [{
+      nodeId: "node-a",
+      organizationId: "org-platform",
+      displayName: "Worker A",
+      status: "online",
+      slotCapacity: 2,
+      slotAvailable: 1,
+      createdAt: "2026-04-21T10:00:00.000Z",
+      updatedAt: "2026-04-21T10:00:00.000Z",
+    }],
+    organizations: [{
+      organizationId: "org-platform",
+      ownerPrincipalId: "principal-owner",
+      displayName: "Platform Team",
+      slug: "platform-team",
+      createdAt: "2026-04-21T10:00:00.000Z",
+      updatedAt: "2026-04-21T10:00:00.000Z",
+    }],
+  });
+  const service = createInMemoryPlatformWorkerRunService({
+    nodeService,
+    now: () => "2026-04-21T11:05:00.000Z",
+    assignedRuns: [{
+      organization: {
+        organizationId: "org-platform",
+        ownerPrincipalId: "principal-owner",
+        displayName: "Platform Team",
+        slug: "platform-team",
+        createdAt: "2026-04-21T10:00:00.000Z",
+        updatedAt: "2026-04-21T10:00:00.000Z",
+      },
+      node: {
+        nodeId: "node-a",
+        organizationId: "org-platform",
+        displayName: "Worker A",
+        status: "online",
+        slotCapacity: 2,
+        slotAvailable: 1,
+        createdAt: "2026-04-21T10:00:00.000Z",
+        updatedAt: "2026-04-21T10:00:00.000Z",
+      },
+      targetAgent: {
+        agentId: "agent-a",
+        organizationId: "org-platform",
+        displayName: "Agent A",
+        departmentRole: "Platform",
+        status: "active",
+        createdAt: "2026-04-21T10:00:00.000Z",
+        updatedAt: "2026-04-21T10:00:00.000Z",
+      },
+      workItem: {
+        workItemId: "work-item-a",
+        organizationId: "org-platform",
+        targetAgentId: "agent-a",
+        sourceType: "human",
+        goal: "Keep old run ids.",
+        status: "queued",
+        priority: "normal",
+        createdAt: "2026-04-21T10:01:00.000Z",
+        updatedAt: "2026-04-21T10:01:00.000Z",
+      },
+      run: {
+        runId: "run-platform-7",
+        organizationId: "org-platform",
+        workItemId: "work-item-a",
+        nodeId: "node-a",
+        status: "completed",
+        createdAt: "2026-04-21T10:01:00.000Z",
+        updatedAt: "2026-04-21T10:01:00.000Z",
+      },
+      executionLease: {
+        leaseId: "lease-platform-9",
+        runId: "run-platform-7",
+        nodeId: "node-a",
+        workItemId: "work-item-a",
+        leaseToken: "lease-token-platform-11",
+        status: "released",
+        createdAt: "2026-04-21T10:01:00.000Z",
+        updatedAt: "2026-04-21T10:01:00.000Z",
+      },
+      executionContract: {
+        workspacePath: "/srv/workspace",
+      },
+    }],
+  });
+
+  const assigned = service.assignQueuedWorkItem({
+    ownerPrincipalId: "principal-owner",
+    nodeId: "node-a",
+    organization: {
+      organizationId: "org-platform",
+      ownerPrincipalId: "principal-owner",
+      displayName: "Platform Team",
+      slug: "platform-team",
+      createdAt: "2026-04-21T10:00:00.000Z",
+      updatedAt: "2026-04-21T10:00:00.000Z",
+    },
+    targetAgent: {
+      agentId: "agent-b",
+      organizationId: "org-platform",
+      displayName: "Agent B",
+      departmentRole: "Platform",
+      status: "active",
+      createdAt: "2026-04-21T10:00:00.000Z",
+      updatedAt: "2026-04-21T10:00:00.000Z",
+    },
+    workItem: {
+      workItemId: "work-item-b",
+      organizationId: "org-platform",
+      targetAgentId: "agent-b",
+      sourceType: "human",
+      goal: "New run should continue sequence.",
+      status: "queued",
+      priority: "normal",
+      createdAt: "2026-04-21T11:00:00.000Z",
+      updatedAt: "2026-04-21T11:00:00.000Z",
+    },
+    workspacePath: "/srv/workspace-b",
+  });
+
+  assert.equal(assigned?.run.runId, "run-platform-8");
+  assert.equal(assigned?.executionLease.leaseId, "lease-platform-10");
+  assert.equal(assigned?.executionLease.leaseToken, "lease-token-platform-12");
+});

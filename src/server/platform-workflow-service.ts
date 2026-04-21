@@ -126,6 +126,23 @@ export function createInMemoryPlatformWorkflowService(
     mailboxContexts.set(seed.entry.mailboxEntryId, cloneMailboxSeed(seed));
   }
 
+  const resetGeneratedCounters = () => {
+    generatedWorkItemCount = resolveMaxSequentialId(
+      Array.from(workItemContexts.values()).map((context) => context.workItem.workItemId),
+      "work-item-platform-",
+    );
+    generatedMessageCount = resolveMaxSequentialId(
+      Array.from(mailboxContexts.values()).map((context) => context.message.messageId),
+      "message-platform-",
+    );
+    generatedMailboxEntryCount = resolveMaxSequentialId(
+      Array.from(mailboxContexts.values()).map((context) => context.entry.mailboxEntryId),
+      "mailbox-entry-platform-",
+    );
+  };
+
+  resetGeneratedCounters();
+
   const replaceSnapshot = (snapshot: PlatformWorkflowServiceSnapshot) => {
     workItemContexts.clear();
     mailboxContexts.clear();
@@ -140,6 +157,8 @@ export function createInMemoryPlatformWorkflowService(
     for (const seed of snapshot.mailboxSeeds) {
       mailboxContexts.set(seed.entry.mailboxEntryId, cloneMailboxSeed(seed));
     }
+
+    resetGeneratedCounters();
   };
 
   return {
@@ -929,4 +948,33 @@ function normalizeText(value: string | null | undefined) {
 function normalizeOptionalText(value: string | null | undefined): string | null {
   const normalized = normalizeText(value);
   return normalized ? normalized : null;
+}
+
+function resolveMaxSequentialId(values: Array<string | undefined>, prefix: string): number {
+  let maxValue = 0;
+
+  for (const value of values) {
+    if (!value) {
+      continue;
+    }
+
+    const match = new RegExp(`^${escapeRegExp(prefix)}(\\d+)$`).exec(value);
+    const suffix = match?.[1];
+
+    if (!suffix) {
+      continue;
+    }
+
+    const parsed = Number.parseInt(suffix, 10);
+
+    if (Number.isFinite(parsed) && parsed > maxValue) {
+      maxValue = parsed;
+    }
+  }
+
+  return maxValue;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

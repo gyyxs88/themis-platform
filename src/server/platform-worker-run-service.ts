@@ -72,14 +72,36 @@ export function createInMemoryPlatformWorkerRunService(
   options: InMemoryPlatformWorkerRunServiceOptions,
 ): SnapshotCapablePlatformWorkerRunService {
   const now = options.now ?? (() => new Date().toISOString());
-  const generateRunId = options.generateRunId ?? createIdFactory("run-platform");
-  const generateLeaseId = options.generateLeaseId ?? createIdFactory("lease-platform");
-  const generateLeaseToken = options.generateLeaseToken ?? createIdFactory("lease-token-platform");
   const assignedRuns = new Map<string, ManagedAgentPlatformWorkerAssignedRunResult>();
+  let generatedRunCount = 0;
+  let generatedLeaseCount = 0;
+  let generatedLeaseTokenCount = 0;
 
   for (const assignedRun of options.assignedRuns ?? []) {
     assignedRuns.set(assignedRun.run.runId, cloneAssignedRun(assignedRun));
   }
+
+  const resetGeneratedCounters = () => {
+    const values = Array.from(assignedRuns.values());
+    generatedRunCount = resolveMaxSequentialId(
+      values.map((assignedRun) => assignedRun.run.runId),
+      "run-platform-",
+    );
+    generatedLeaseCount = resolveMaxSequentialId(
+      values.map((assignedRun) => assignedRun.executionLease.leaseId),
+      "lease-platform-",
+    );
+    generatedLeaseTokenCount = resolveMaxSequentialId(
+      values.map((assignedRun) => assignedRun.executionLease.leaseToken),
+      "lease-token-platform-",
+    );
+  };
+
+  resetGeneratedCounters();
+
+  const generateRunId = options.generateRunId ?? (() => `run-platform-${++generatedRunCount}`);
+  const generateLeaseId = options.generateLeaseId ?? (() => `lease-platform-${++generatedLeaseCount}`);
+  const generateLeaseToken = options.generateLeaseToken ?? (() => `lease-token-platform-${++generatedLeaseTokenCount}`);
 
   const replaceSnapshot = (snapshot: PlatformWorkerRunServiceSnapshot) => {
     assignedRuns.clear();
@@ -87,6 +109,8 @@ export function createInMemoryPlatformWorkerRunService(
     for (const assignedRun of snapshot.assignedRuns) {
       assignedRuns.set(assignedRun.run.runId, cloneAssignedRun(assignedRun));
     }
+
+    resetGeneratedCounters();
   };
 
   return {
@@ -464,15 +488,6 @@ function cloneAssignedRun(
   };
 }
 
-function createIdFactory(prefix: string) {
-  let counter = 0;
-
-  return () => {
-    counter += 1;
-    return `${prefix}-${counter}`;
-  };
-}
-
 function normalizeRequiredText(value: string | null | undefined, message: string): string {
   const normalized = typeof value === "string" ? value.trim() : "";
 
@@ -518,6 +533,35 @@ function resolveRunStatusScore(status: ManagedAgentPlatformWorkerAssignedRunResu
     default:
       return 0;
   }
+}
+
+function resolveMaxSequentialId(values: Array<string | undefined>, prefix: string): number {
+  let maxValue = 0;
+
+  for (const value of values) {
+    if (!value) {
+      continue;
+    }
+
+    const match = new RegExp(`^${escapeRegExp(prefix)}(\\d+)$`).exec(value);
+    const suffix = match?.[1];
+
+    if (!suffix) {
+      continue;
+    }
+
+    const parsed = Number.parseInt(suffix, 10);
+
+    if (Number.isFinite(parsed) && parsed > maxValue) {
+      maxValue = parsed;
+    }
+  }
+
+  return maxValue;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeTimestamp(value: string | undefined, fallbackNow: () => string): string {
