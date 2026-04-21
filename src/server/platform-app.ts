@@ -7,6 +7,7 @@ import type {
   ManagedAgentPlatformNodeHeartbeatPayload,
   ManagedAgentPlatformNodeListPayload,
   ManagedAgentPlatformNodeReclaimPayload,
+  ManagedAgentPlatformWorkerCompletionResult,
   ManagedAgentPlatformNodeRegisterPayload,
   ManagedAgentPlatformWorkerPullPayload,
   ManagedAgentPlatformWorkerRunCompletePayload,
@@ -724,7 +725,7 @@ async function handlePlatformRequest(
       }
       const result = options.workflowService.getWorkItemDetail(payload);
       return result
-        ? writeJson(response, 200, result)
+        ? writeJson(response, 200, attachLatestCompletionToWorkItemDetail(result, options.executionRuntimeStore))
         : writeJson(response, 404, buildNotFoundErrorResponse(`Work item ${payload.workItemId ?? "unknown"} not found.`));
     }
 
@@ -792,7 +793,7 @@ async function handlePlatformRequest(
       }
       const result = options.workerRunService.getRunDetail(payload);
       return result
-        ? writeJson(response, 200, result)
+        ? writeJson(response, 200, attachCompletionResultToRunDetail(result, options.executionRuntimeStore))
         : writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
     }
 
@@ -1241,6 +1242,62 @@ function normalizeIp(value: string | null | undefined): string | null {
   }
 
   return normalized || null;
+}
+
+function attachLatestCompletionToWorkItemDetail<
+  T extends {
+    organization: { ownerPrincipalId: string };
+    runs?: Array<{ runId: string }>;
+  },
+>(
+  detail: T,
+  executionRuntimeStore?: PlatformExecutionRuntimeStore,
+): T & { latestCompletion?: ManagedAgentPlatformWorkerCompletionResult | null } {
+  const ownerPrincipalId = detail.organization.ownerPrincipalId;
+  const latestCompletion = (detail.runs ?? [])
+    .map((run) => readRunCompletionResult(executionRuntimeStore, ownerPrincipalId, run.runId))
+    .find((value): value is ManagedAgentPlatformWorkerCompletionResult => Boolean(value));
+
+  return latestCompletion
+    ? {
+        ...detail,
+        latestCompletion,
+      }
+    : detail;
+}
+
+function attachCompletionResultToRunDetail<
+  T extends {
+    organization: { ownerPrincipalId: string };
+    run: { runId: string };
+  },
+>(
+  detail: T,
+  executionRuntimeStore?: PlatformExecutionRuntimeStore,
+): T & { completionResult?: ManagedAgentPlatformWorkerCompletionResult | null } {
+  const completionResult = readRunCompletionResult(
+    executionRuntimeStore,
+    detail.organization.ownerPrincipalId,
+    detail.run.runId,
+  );
+
+  return completionResult
+    ? {
+        ...detail,
+        completionResult,
+      }
+    : detail;
+}
+
+function readRunCompletionResult(
+  executionRuntimeStore: PlatformExecutionRuntimeStore | undefined,
+  ownerPrincipalId: string,
+  runId: string,
+): ManagedAgentPlatformWorkerCompletionResult | undefined {
+  return executionRuntimeStore?.getRunState({
+    ownerPrincipalId,
+    runId,
+  })?.completionResult ?? undefined;
 }
 
 function buildNotFoundErrorResponse(message: string): { error: { code: "NOT_FOUND"; message: string } } {

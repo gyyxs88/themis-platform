@@ -273,6 +273,10 @@ test("createPlatformApp 会把 worker run 轨迹写入 execution runtime store",
       }),
     });
     assert.equal(dispatch.status, 200);
+    const dispatchPayload = await dispatch.json() as {
+      workItem?: { workItemId?: string };
+    };
+    assert.equal(dispatchPayload.workItem?.workItemId, "work-item-platform-1");
 
     const pull = await fetch(`${baseUrl}/api/platform/worker/runs/pull`, {
       method: "POST",
@@ -326,6 +330,56 @@ test("createPlatformApp 会把 worker run 轨迹写入 execution runtime store",
       }),
     });
     assert.equal(complete.status, 200);
+
+    const workItemDetail = await fetch(`${baseUrl}/api/platform/work-items/detail`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItemId: dispatchPayload.workItem?.workItemId,
+      }),
+    });
+    assert.equal(workItemDetail.status, 200);
+    const workItemDetailPayload = await workItemDetail.json() as {
+      latestCompletion?: {
+        summary?: string;
+        structuredOutput?: {
+          reportFile?: string;
+        };
+      };
+    };
+    assert.equal(workItemDetailPayload.latestCompletion?.summary, "平台仓已记录 completion 结果");
+    assert.equal(
+      workItemDetailPayload.latestCompletion?.structuredOutput?.reportFile,
+      "/srv/runtime-project/report.json",
+    );
+
+    const runDetail = await fetch(`${baseUrl}/api/platform/runs/detail`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        runId: "run-platform-app",
+      }),
+    });
+    assert.equal(runDetail.status, 200);
+    const runDetailPayload = await runDetail.json() as {
+      completionResult?: {
+        summary?: string;
+        structuredOutput?: {
+          reportFile?: string;
+        };
+      };
+    };
+    assert.equal(runDetailPayload.completionResult?.summary, "平台仓已记录 completion 结果");
+    assert.equal(
+      runDetailPayload.completionResult?.structuredOutput?.reportFile,
+      "/srv/runtime-project/report.json",
+    );
 
     const state = loadPlatformExecutionRuntimeState(
       runtimeRoot,

@@ -58,6 +58,10 @@ export interface PlatformExecutionRuntimeEvent {
 }
 
 export interface PlatformExecutionRuntimeStore {
+  getRunState(input: {
+    ownerPrincipalId: string;
+    runId: string;
+  }): PlatformExecutionRuntimeState | null;
   ensureAssignedRun(input: {
     assignedRun: ManagedAgentPlatformWorkerAssignedRunResult;
     source?: string;
@@ -92,6 +96,10 @@ export function createLocalPlatformExecutionRuntimeStore(
   const now = options.now ?? (() => new Date().toISOString());
 
   return {
+    getRunState(input) {
+      return loadPlatformExecutionRuntimeState(rootDirectory, input.ownerPrincipalId, input.runId);
+    },
+
     ensureAssignedRun(input) {
       const runDirectory = resolvePlatformExecutionRuntimeRunDirectory(
         rootDirectory,
