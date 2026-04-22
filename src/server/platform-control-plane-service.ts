@@ -101,6 +101,9 @@ export interface PlatformControlPlaneServiceOptions {
   snapshot?: PlatformControlPlaneServiceSnapshot;
 }
 
+const DEFAULT_PLATFORM_RUNTIME_MODEL = "gpt-5.4";
+const DEFAULT_PLATFORM_RUNTIME_REASONING = "xhigh";
+
 export function createInMemoryPlatformControlPlaneService(
   options: PlatformControlPlaneServiceOptions = {},
 ): SnapshotCapablePlatformControlPlaneService {
@@ -378,7 +381,8 @@ export function createInMemoryPlatformControlPlaneService(
       const runtimeProfile: ManagedAgentPlatformRuntimeProfileRecord = {
         agentId,
         provider: null,
-        model: null,
+        model: DEFAULT_PLATFORM_RUNTIME_MODEL,
+        reasoning: DEFAULT_PLATFORM_RUNTIME_REASONING,
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -417,6 +421,7 @@ export function createInMemoryPlatformControlPlaneService(
         ...context.runtimeProfile,
         provider: input.boundary.runtimeProfile?.provider ?? context.runtimeProfile.provider ?? null,
         model: input.boundary.runtimeProfile?.model ?? context.runtimeProfile.model ?? null,
+        reasoning: input.boundary.runtimeProfile?.reasoning ?? context.runtimeProfile.reasoning ?? null,
         updatedAt: timestamp,
       };
 

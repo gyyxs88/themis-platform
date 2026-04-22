@@ -143,11 +143,20 @@ test("createPlatformApp 会暴露 agents 与 projects 最小控制面路由", as
           runtimeProfile: {
             provider: "openai",
             model: "gpt-5.4-mini",
+            reasoning: "high",
           },
         },
       }),
     });
     assert.equal(boundaryResponse.status, 200);
+    const boundary = await boundaryResponse.json() as {
+      runtimeProfile?: {
+        model?: string;
+        reasoning?: string;
+      };
+    };
+    assert.equal(boundary.runtimeProfile?.model, "gpt-5.4-mini");
+    assert.equal(boundary.runtimeProfile?.reasoning, "high");
 
     const spawnPolicyResponse = await fetch(`${baseUrl}/api/platform/agents/spawn-policy/update`, {
       method: "POST",
