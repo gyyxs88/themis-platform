@@ -501,17 +501,17 @@ export function createInMemoryPlatformControlPlaneService(
     upsertProjectWorkspaceBinding(input) {
       const state = ensureOwnerState(input.ownerPrincipalId);
       const timestamp = now();
-      ensureOrganization(input.ownerPrincipalId, state, input.binding.organizationId);
+      const organization = ensureOrganization(input.ownerPrincipalId, state, input.binding.organizationId);
 
       const existing = state.projectBindings.get(normalizeText(input.binding.projectId));
       const binding: ManagedAgentPlatformProjectWorkspaceBindingRecord = {
         projectId: normalizeText(input.binding.projectId),
-        organizationId: normalizeText(input.binding.organizationId),
+        organizationId: organization.organizationId,
         displayName: normalizeOptionalText(input.binding.displayName),
         canonicalWorkspacePath: input.binding.canonicalWorkspacePath ?? existing?.canonicalWorkspacePath ?? null,
         preferredNodeId: input.binding.preferredNodeId ?? existing?.preferredNodeId ?? null,
         lastActiveWorkspacePath: input.binding.lastActiveWorkspacePath ?? existing?.lastActiveWorkspacePath ?? null,
-        continuityMode: input.binding.continuityMode,
+        continuityMode: input.binding.continuityMode ?? existing?.continuityMode ?? "sticky",
         createdAt: existing?.createdAt ?? timestamp,
         updatedAt: timestamp,
       };

@@ -274,7 +274,7 @@ export function createInMemoryPlatformWorkflowService(
         workItemId,
         organizationId: organization.organizationId,
         targetAgentId: targetAgent.agentId,
-        sourceType: payload.workItem.sourceType,
+        sourceType: payload.workItem.sourceType ?? "human",
         ...(payload.workItem.dispatchReason ? { dispatchReason: payload.workItem.dispatchReason } : {}),
         goal: payload.workItem.goal,
         status: "queued",
