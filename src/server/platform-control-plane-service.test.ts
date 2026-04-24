@@ -53,6 +53,9 @@ test("PlatformControlPlaneService 会提供 agents 与 projects 最小控制面�
         provider: "openai",
         model: "gpt-5.4-mini",
         reasoning: "high",
+        sandboxMode: "workspace-write",
+        networkAccessEnabled: false,
+        approvalPolicy: "never",
       },
     },
   });
@@ -61,6 +64,9 @@ test("PlatformControlPlaneService 会提供 agents 与 projects 最小控制面�
   assert.equal(boundary?.runtimeProfile.provider, "openai");
   assert.equal(boundary?.runtimeProfile.model, "gpt-5.4-mini");
   assert.equal(boundary?.runtimeProfile.reasoning, "high");
+  assert.equal(boundary?.runtimeProfile.sandboxMode, "workspace-write");
+  assert.equal(boundary?.runtimeProfile.networkAccessEnabled, false);
+  assert.equal(boundary?.runtimeProfile.approvalPolicy, "never");
 
   const aliasBoundary = service.updateExecutionBoundary({
     ownerPrincipalId: "principal-platform-owner",
@@ -74,6 +80,9 @@ test("PlatformControlPlaneService 会提供 agents 与 projects 最小控制面�
   });
   assert.equal(aliasBoundary?.workspacePolicy.canonicalWorkspacePath, "/srv/platform-beta");
   assert.deepEqual(aliasBoundary?.workspacePolicy.additionalWorkspacePaths, ["/srv/platform-shared"]);
+  assert.equal(aliasBoundary?.runtimeProfile.sandboxMode, "workspace-write");
+  assert.equal(aliasBoundary?.runtimeProfile.networkAccessEnabled, false);
+  assert.equal(aliasBoundary?.runtimeProfile.approvalPolicy, "never");
 
   const card = service.updateAgentCard({
     ownerPrincipalId: "principal-platform-owner",

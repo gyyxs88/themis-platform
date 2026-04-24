@@ -425,11 +425,28 @@ export function createInMemoryPlatformControlPlaneService(
         additionalWorkspacePaths,
         updatedAt: timestamp,
       };
+      const runtimeProfileInput = input.boundary.runtimeProfile;
       const runtimeProfile: ManagedAgentPlatformRuntimeProfileRecord = {
         ...context.runtimeProfile,
-        provider: input.boundary.runtimeProfile?.provider ?? context.runtimeProfile.provider ?? null,
-        model: input.boundary.runtimeProfile?.model ?? context.runtimeProfile.model ?? null,
-        reasoning: input.boundary.runtimeProfile?.reasoning ?? context.runtimeProfile.reasoning ?? null,
+        provider: runtimeProfileInput?.provider ?? context.runtimeProfile.provider ?? null,
+        model: runtimeProfileInput?.model ?? context.runtimeProfile.model ?? null,
+        reasoning: runtimeProfileInput?.reasoning ?? context.runtimeProfile.reasoning ?? null,
+        memoryMode: normalizeOptionalText(runtimeProfileInput?.memoryMode) ?? context.runtimeProfile.memoryMode ?? null,
+        sandboxMode: normalizeOptionalText(runtimeProfileInput?.sandboxMode) ?? context.runtimeProfile.sandboxMode ?? null,
+        webSearchMode: normalizeOptionalText(runtimeProfileInput?.webSearchMode) ?? context.runtimeProfile.webSearchMode ?? null,
+        networkAccessEnabled: typeof runtimeProfileInput?.networkAccessEnabled === "boolean"
+          ? runtimeProfileInput.networkAccessEnabled
+          : context.runtimeProfile.networkAccessEnabled ?? null,
+        approvalPolicy: normalizeOptionalText(runtimeProfileInput?.approvalPolicy)
+          ?? context.runtimeProfile.approvalPolicy
+          ?? null,
+        accessMode: normalizeOptionalText(runtimeProfileInput?.accessMode) ?? context.runtimeProfile.accessMode ?? null,
+        authAccountId: normalizeOptionalText(runtimeProfileInput?.authAccountId)
+          ?? context.runtimeProfile.authAccountId
+          ?? null,
+        thirdPartyProviderId: normalizeOptionalText(runtimeProfileInput?.thirdPartyProviderId)
+          ?? context.runtimeProfile.thirdPartyProviderId
+          ?? null,
         updatedAt: timestamp,
       };
 

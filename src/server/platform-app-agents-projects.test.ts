@@ -144,6 +144,9 @@ test("createPlatformApp 会暴露 agents 与 projects 最小控制面路由", as
             provider: "openai",
             model: "gpt-5.4-mini",
             reasoning: "high",
+            sandboxMode: "workspace-write",
+            networkAccessEnabled: false,
+            approvalPolicy: "never",
           },
         },
       }),
@@ -153,10 +156,16 @@ test("createPlatformApp 会暴露 agents 与 projects 最小控制面路由", as
       runtimeProfile?: {
         model?: string;
         reasoning?: string;
+        sandboxMode?: string;
+        networkAccessEnabled?: boolean;
+        approvalPolicy?: string;
       };
     };
     assert.equal(boundary.runtimeProfile?.model, "gpt-5.4-mini");
     assert.equal(boundary.runtimeProfile?.reasoning, "high");
+    assert.equal(boundary.runtimeProfile?.sandboxMode, "workspace-write");
+    assert.equal(boundary.runtimeProfile?.networkAccessEnabled, false);
+    assert.equal(boundary.runtimeProfile?.approvalPolicy, "never");
 
     const aliasBoundaryResponse = await fetch(`${baseUrl}/api/platform/agents/execution-boundary/update`, {
       method: "POST",
