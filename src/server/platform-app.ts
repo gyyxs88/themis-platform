@@ -970,6 +970,11 @@ function scheduleQueuedWorkItemForNode(
       queuedWorkItem,
       options,
     ),
+    executionContract: resolveRuntimeContractForQueuedWorkItem(
+      payload.ownerPrincipalId,
+      queuedWorkItem,
+      options,
+    ),
   });
 }
 
@@ -1013,6 +1018,68 @@ function resolveWorkspacePathForQueuedWorkItem(
   }
 
   return options.defaultWorkspacePath;
+}
+
+function resolveRuntimeContractForQueuedWorkItem(
+  ownerPrincipalId: string,
+  queuedWorkItem: PlatformQueuedWorkItemContext,
+  options: HandlePlatformRequestOptions,
+): Omit<NonNullable<ReturnType<PlatformWorkerRunService["assignQueuedWorkItem"]>>["executionContract"], "workspacePath"> {
+  const runtimeProfile = isRecord(queuedWorkItem.workItem.runtimeProfileSnapshot)
+    ? queuedWorkItem.workItem.runtimeProfileSnapshot
+    : options.controlPlaneService.getAgentDetail({
+      ownerPrincipalId,
+      agentId: queuedWorkItem.targetAgent.agentId,
+    })?.runtimeProfile;
+
+  if (!isRecord(runtimeProfile)) {
+    const contextSandboxMode = resolveSandboxModeFromContextPacket(queuedWorkItem.workItem.contextPacket);
+    return {
+      ...(contextSandboxMode ? { sandboxMode: contextSandboxMode } : {}),
+    };
+  }
+
+  const profileSandboxMode = normalizeOptionalText(runtimeProfile.sandboxMode);
+  const contextSandboxMode = resolveSandboxModeFromContextPacket(queuedWorkItem.workItem.contextPacket);
+  const sandboxMode = chooseStricterSandboxMode(profileSandboxMode, contextSandboxMode);
+  const credentialId = normalizeOptionalText(runtimeProfile.authAccountId);
+  const providerId = normalizeOptionalText(runtimeProfile.thirdPartyProviderId)
+    ?? normalizeOptionalText(runtimeProfile.provider);
+
+  return {
+    ...(credentialId ? { credentialId } : {}),
+    ...(providerId ? { provider: providerId } : {}),
+    ...(normalizeOptionalText(runtimeProfile.model) ? { model: normalizeOptionalText(runtimeProfile.model) } : {}),
+    ...(normalizeOptionalText(runtimeProfile.reasoning) ? { reasoning: normalizeOptionalText(runtimeProfile.reasoning) } : {}),
+    ...(sandboxMode ? { sandboxMode } : {}),
+    ...(normalizeOptionalText(runtimeProfile.approvalPolicy) ? { approvalPolicy: normalizeOptionalText(runtimeProfile.approvalPolicy) } : {}),
+    ...(typeof runtimeProfile.networkAccessEnabled === "boolean"
+      ? { networkAccessEnabled: runtimeProfile.networkAccessEnabled }
+      : {}),
+  };
+}
+
+function resolveSandboxModeFromContextPacket(contextPacket: unknown): string | null {
+  if (!isRecord(contextPacket)) {
+    return null;
+  }
+
+  const safety = normalizeOptionalText(contextPacket.safety)?.toLowerCase();
+  return safety === "read_only_only_no_writes" ? "read-only" : null;
+}
+
+function chooseStricterSandboxMode(left: string | null, right: string | null): string | null {
+  const modes = [left, right].filter((value): value is string => Boolean(value));
+
+  if (modes.includes("read-only")) {
+    return "read-only";
+  }
+
+  if (modes.includes("workspace-write")) {
+    return "workspace-write";
+  }
+
+  return modes[0] ?? null;
 }
 
 function readWorkspacePathFromPolicySnapshot(snapshot: unknown): string | null {

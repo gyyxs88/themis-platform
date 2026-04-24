@@ -28,6 +28,7 @@ export interface PlatformWorkerRunService {
     targetAgent: ManagedAgentPlatformAgentRecord;
     workItem: ManagedAgentPlatformWorkItemRecord;
     workspacePath: string;
+    executionContract?: Omit<ManagedAgentPlatformWorkerAssignedRunResult["executionContract"], "workspacePath">;
   }): ManagedAgentPlatformWorkerAssignedRunResult | null;
   updateRunStatus(payload: ManagedAgentPlatformWorkerRunStatusPayload): ManagedAgentPlatformWorkerRunMutationResult | null;
   completeRun(payload: ManagedAgentPlatformWorkerRunCompletePayload): ManagedAgentPlatformWorkerRunMutationResult | null;
@@ -206,6 +207,7 @@ export function createInMemoryPlatformWorkerRunService(
         },
         executionContract: {
           workspacePath: normalizeRequiredText(input.workspacePath, "workspacePath is required."),
+          ...(input.executionContract ?? {}),
         },
       };
       assignedRuns.set(runId, cloneAssignedRun(assignedRun));

@@ -156,6 +156,16 @@ test("createPlatformApp 分配 queued work-item 时优先使用工单 snapshot�
       workspacePolicy: {
         canonicalWorkspacePath: "/srv/agent-default",
       },
+      runtimeProfile: {
+        provider: "openai",
+        model: "gpt-5.5",
+        reasoning: "xhigh",
+        sandboxMode: "read-only",
+        networkAccessEnabled: false,
+        approvalPolicy: "never",
+        authAccountId: "default-auth",
+        thirdPartyProviderId: "openai-compatible",
+      },
     },
   });
   const nodeService = createInMemoryPlatformNodeService({
@@ -229,9 +239,25 @@ test("createPlatformApp 分配 queued work-item 时优先使用工单 snapshot�
     const defaultPayload = await pullDefault.json() as {
       run?: { runId?: string };
       executionLease?: { leaseToken?: string };
-      executionContract?: { workspacePath?: string };
+      executionContract?: {
+        workspacePath?: string;
+        credentialId?: string;
+        provider?: string;
+        model?: string;
+        reasoning?: string;
+        sandboxMode?: string;
+        networkAccessEnabled?: boolean;
+        approvalPolicy?: string;
+      };
     };
     assert.equal(defaultPayload.executionContract?.workspacePath, "/srv/agent-default");
+    assert.equal(defaultPayload.executionContract?.credentialId, "default-auth");
+    assert.equal(defaultPayload.executionContract?.provider, "openai-compatible");
+    assert.equal(defaultPayload.executionContract?.model, "gpt-5.5");
+    assert.equal(defaultPayload.executionContract?.reasoning, "xhigh");
+    assert.equal(defaultPayload.executionContract?.sandboxMode, "read-only");
+    assert.equal(defaultPayload.executionContract?.networkAccessEnabled, false);
+    assert.equal(defaultPayload.executionContract?.approvalPolicy, "never");
     assert.ok(defaultPayload.run?.runId);
     assert.ok(defaultPayload.executionLease?.leaseToken);
 
@@ -264,6 +290,14 @@ test("createPlatformApp 分配 queued work-item 时优先使用工单 snapshot�
           workspacePolicySnapshot: {
             workspacePath: "/srv/snapshot-workspace",
           },
+          runtimeProfileSnapshot: {
+            provider: "openai",
+            model: "gpt-5.4-mini",
+            sandboxMode: "workspace-write",
+            approvalPolicy: "on-request",
+            authAccountId: "snapshot-auth",
+            thirdPartyProviderId: "snapshot-provider",
+          },
         },
       }),
     });
@@ -281,9 +315,21 @@ test("createPlatformApp 分配 queued work-item 时优先使用工单 snapshot�
     });
     assert.equal(pullSnapshot.status, 200);
     const snapshotPayload = await pullSnapshot.json() as {
-      executionContract?: { workspacePath?: string };
+      executionContract?: {
+        workspacePath?: string;
+        credentialId?: string;
+        provider?: string;
+        model?: string;
+        sandboxMode?: string;
+        approvalPolicy?: string;
+      };
     };
     assert.equal(snapshotPayload.executionContract?.workspacePath, "/srv/snapshot-workspace");
+    assert.equal(snapshotPayload.executionContract?.credentialId, "snapshot-auth");
+    assert.equal(snapshotPayload.executionContract?.provider, "snapshot-provider");
+    assert.equal(snapshotPayload.executionContract?.model, "gpt-5.4-mini");
+    assert.equal(snapshotPayload.executionContract?.sandboxMode, "workspace-write");
+    assert.equal(snapshotPayload.executionContract?.approvalPolicy, "on-request");
   } finally {
     server.close();
   }
