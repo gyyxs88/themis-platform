@@ -996,7 +996,41 @@ function resolveWorkspacePathForQueuedWorkItem(
     }
   }
 
+  const snapshotWorkspacePath = readWorkspacePathFromPolicySnapshot(queuedWorkItem.workItem.workspacePolicySnapshot);
+
+  if (snapshotWorkspacePath) {
+    return snapshotWorkspacePath;
+  }
+
+  const agentDetail = options.controlPlaneService.getAgentDetail({
+    ownerPrincipalId,
+    agentId: queuedWorkItem.targetAgent.agentId,
+  });
+  const agentWorkspacePath = normalizeOptionalText(agentDetail?.workspacePolicy?.canonicalWorkspacePath);
+
+  if (agentWorkspacePath) {
+    return agentWorkspacePath;
+  }
+
   return options.defaultWorkspacePath;
+}
+
+function readWorkspacePathFromPolicySnapshot(snapshot: unknown): string | null {
+  if (!isRecord(snapshot)) {
+    return null;
+  }
+
+  return normalizeOptionalText(snapshot.workspacePath)
+    ?? normalizeOptionalText(snapshot.canonicalWorkspacePath);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized ? normalized : null;
 }
 
 async function recordStateMutation(options: HandlePlatformRequestOptions): Promise<void> {

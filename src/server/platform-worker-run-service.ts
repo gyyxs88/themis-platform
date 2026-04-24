@@ -216,9 +216,13 @@ export function createInMemoryPlatformWorkerRunService(
       const assignedRun = requireOwnedAssignedRun(assignedRuns, payload.ownerPrincipalId, payload.nodeId, payload.runId, payload.leaseToken);
       const timestamp = now();
       const nextRunStatus = mapWorkerRunStatus(payload.status, assignedRun.run.status);
+      const failureCode = normalizeOptionalText(payload.failureCode);
+      const failureMessage = normalizeOptionalText(payload.failureMessage);
       assignedRun.run = {
         ...assignedRun.run,
         status: nextRunStatus,
+        ...(payload.status === "failed" && failureCode ? { failureCode } : {}),
+        ...(payload.status === "failed" && failureMessage ? { failureMessage } : {}),
         updatedAt: timestamp,
       };
 
@@ -496,6 +500,11 @@ function normalizeRequiredText(value: string | null | undefined, message: string
   }
 
   return normalized;
+}
+
+function normalizeOptionalText(value: string | null | undefined): string | undefined {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized ? normalized : undefined;
 }
 
 function resolveExecutionLeaseScore(status: ManagedAgentPlatformWorkerAssignedRunResult["executionLease"]["status"]) {

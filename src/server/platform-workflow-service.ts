@@ -275,11 +275,24 @@ export function createInMemoryPlatformWorkflowService(
         organizationId: organization.organizationId,
         targetAgentId: targetAgent.agentId,
         sourceType: payload.workItem.sourceType ?? "human",
+        ...(payload.workItem.sourcePrincipalId ? { sourcePrincipalId: payload.workItem.sourcePrincipalId } : {}),
+        ...(payload.workItem.sourceAgentId ? { sourceAgentId: payload.workItem.sourceAgentId } : {}),
+        ...(payload.workItem.parentWorkItemId ? { parentWorkItemId: payload.workItem.parentWorkItemId } : {}),
         ...(payload.workItem.dispatchReason ? { dispatchReason: payload.workItem.dispatchReason } : {}),
         goal: payload.workItem.goal,
+        ...(Object.prototype.hasOwnProperty.call(payload.workItem, "contextPacket")
+          ? { contextPacket: payload.workItem.contextPacket }
+          : {}),
         status: "queued",
         priority: payload.workItem.priority ?? "normal",
         ...(Object.prototype.hasOwnProperty.call(payload.workItem, "projectId") ? { projectId: payload.workItem.projectId ?? null } : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload.workItem, "workspacePolicySnapshot")
+          ? { workspacePolicySnapshot: payload.workItem.workspacePolicySnapshot }
+          : {}),
+        ...(Object.prototype.hasOwnProperty.call(payload.workItem, "runtimeProfileSnapshot")
+          ? { runtimeProfileSnapshot: payload.workItem.runtimeProfileSnapshot }
+          : {}),
+        ...(payload.workItem.scheduledAt ? { scheduledAt: payload.workItem.scheduledAt } : {}),
         createdAt: timestamp,
         updatedAt: timestamp,
       };

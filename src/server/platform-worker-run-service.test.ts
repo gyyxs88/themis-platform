@@ -190,6 +190,88 @@ test("createInMemoryPlatformWorkerRunService 会支持 pull / update / complete 
   assert.equal(completed?.targetAgent.agentId, "agent-a");
 });
 
+test("createInMemoryPlatformWorkerRunService 会把失败原因保存到 run detail", () => {
+  const organization = {
+    organizationId: "org-platform",
+    ownerPrincipalId: "principal-owner",
+    displayName: "Platform Team",
+    slug: "platform-team",
+    createdAt: "2026-04-24T14:00:00.000Z",
+    updatedAt: "2026-04-24T14:00:00.000Z",
+  };
+  const nodeService = createInMemoryPlatformNodeService({
+    now: () => "2026-04-24T14:00:00.000Z",
+    nodes: [{
+      nodeId: "node-a",
+      organizationId: organization.organizationId,
+      displayName: "Worker A",
+      status: "online",
+      slotCapacity: 1,
+      slotAvailable: 1,
+      createdAt: "2026-04-24T14:00:00.000Z",
+      updatedAt: "2026-04-24T14:00:00.000Z",
+    }],
+    organizations: [organization],
+  });
+  const service = createInMemoryPlatformWorkerRunService({
+    nodeService,
+    now: () => "2026-04-24T14:05:00.000Z",
+  });
+  const assigned = service.assignQueuedWorkItem({
+    ownerPrincipalId: "principal-owner",
+    nodeId: "node-a",
+    organization,
+    targetAgent: {
+      agentId: "agent-a",
+      organizationId: organization.organizationId,
+      displayName: "Agent A",
+      departmentRole: "Platform",
+      status: "active",
+      createdAt: "2026-04-24T14:00:00.000Z",
+      updatedAt: "2026-04-24T14:00:00.000Z",
+    },
+    workItem: {
+      workItemId: "work-item-a",
+      organizationId: organization.organizationId,
+      targetAgentId: "agent-a",
+      sourceType: "human",
+      goal: "Fail with reason",
+      status: "queued",
+      priority: "normal",
+      createdAt: "2026-04-24T14:01:00.000Z",
+      updatedAt: "2026-04-24T14:01:00.000Z",
+    },
+    workspacePath: "/srv/workspace",
+  });
+  assert.ok(assigned);
+  const leaseToken = assigned.executionLease.leaseToken;
+  if (!leaseToken) {
+    throw new Error("lease token is required for this test.");
+  }
+
+  const failed = service.updateRunStatus({
+    ownerPrincipalId: "principal-owner",
+    nodeId: "node-a",
+    runId: assigned.run.runId,
+    leaseToken,
+    status: "failed",
+    failureCode: "WORKER_NODE_EXECUTION_FAILED",
+    failureMessage: "spawn codex ENOENT",
+  });
+  assert.equal(failed?.run.status, "failed");
+  assert.equal(failed?.run.failureCode, "WORKER_NODE_EXECUTION_FAILED");
+  assert.equal(failed?.run.failureMessage, "spawn codex ENOENT");
+  assert.equal(failed?.workItem.status, "failed");
+  assert.equal(failed?.executionLease.status, "revoked");
+
+  const detail = service.getRunDetail({
+    ownerPrincipalId: "principal-owner",
+    runId: assigned.run.runId,
+  });
+  assert.equal(detail?.run.failureCode, "WORKER_NODE_EXECUTION_FAILED");
+  assert.equal(detail?.run.failureMessage, "spawn codex ENOENT");
+});
+
 test("createInMemoryPlatformWorkerRunService 会在已有 snapshot 基础上继续递增 run / lease id", () => {
   const nodeService = createInMemoryPlatformNodeService({
     now: () => "2026-04-21T11:00:00.000Z",

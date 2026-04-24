@@ -133,3 +133,158 @@ test("createPlatformApp 会把 queued work-item 在 worker pull 时分配成新 
     server.close();
   }
 });
+
+test("createPlatformApp 分配 queued work-item 时优先使用工单 snapshot，其次使用员工默认工作区", async () => {
+  const controlPlaneService = createInMemoryPlatformControlPlaneService({
+    now: () => "2026-04-24T14:20:00.000Z",
+    generateOrganizationId: () => "org-platform",
+    generatePrincipalId: () => "principal-agent-runtime",
+    generateAgentId: () => "agent-runtime",
+  });
+  const created = controlPlaneService.createAgent({
+    ownerPrincipalId: "principal-platform-owner",
+    agent: {
+      departmentRole: "Platform",
+      displayName: "Runtime Agent",
+      mission: "负责平台运行时。",
+    },
+  });
+  controlPlaneService.updateExecutionBoundary({
+    ownerPrincipalId: "principal-platform-owner",
+    agentId: created.agent.agentId,
+    boundary: {
+      workspacePolicy: {
+        canonicalWorkspacePath: "/srv/agent-default",
+      },
+    },
+  });
+  const nodeService = createInMemoryPlatformNodeService({
+    now: () => "2026-04-24T14:20:00.000Z",
+    organizations: [created.organization],
+    nodes: [{
+      nodeId: "node-runtime",
+      organizationId: created.organization.organizationId,
+      displayName: "Worker Runtime",
+      status: "online",
+      slotCapacity: 2,
+      slotAvailable: 2,
+      createdAt: "2026-04-24T14:20:00.000Z",
+      updatedAt: "2026-04-24T14:20:00.000Z",
+    }],
+  });
+  const workerRunService = createInMemoryPlatformWorkerRunService({
+    nodeService,
+    now: () => "2026-04-24T14:21:00.000Z",
+  });
+  const workflowService = createInMemoryPlatformWorkflowService({
+    workerRunService,
+    now: () => "2026-04-24T14:21:00.000Z",
+    agentSeeds: [{
+      ownerPrincipalId: "principal-platform-owner",
+      organization: created.organization,
+      agent: created.agent,
+    }],
+  });
+  const server = createPlatformApp({
+    nodeService,
+    workerRunService,
+    workflowService,
+    controlPlaneService,
+  });
+
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const dispatchDefault = await fetch(`${baseUrl}/api/platform/work-items/dispatch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItem: {
+          targetAgentId: created.agent.agentId,
+          sourceType: "human",
+          goal: "使用员工默认工作区。",
+        },
+      }),
+    });
+    assert.equal(dispatchDefault.status, 200);
+
+    const pullDefault = await fetch(`${baseUrl}/api/platform/worker/runs/pull`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-runtime",
+      }),
+    });
+    assert.equal(pullDefault.status, 200);
+    const defaultPayload = await pullDefault.json() as {
+      run?: { runId?: string };
+      executionLease?: { leaseToken?: string };
+      executionContract?: { workspacePath?: string };
+    };
+    assert.equal(defaultPayload.executionContract?.workspacePath, "/srv/agent-default");
+    assert.ok(defaultPayload.run?.runId);
+    assert.ok(defaultPayload.executionLease?.leaseToken);
+
+    const updateDefault = await fetch(`${baseUrl}/api/platform/worker/runs/update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-runtime",
+        runId: defaultPayload.run?.runId,
+        leaseToken: defaultPayload.executionLease?.leaseToken,
+        status: "running",
+      }),
+    });
+    assert.equal(updateDefault.status, 200);
+
+    const dispatchSnapshot = await fetch(`${baseUrl}/api/platform/work-items/dispatch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItem: {
+          targetAgentId: created.agent.agentId,
+          sourceType: "human",
+          goal: "使用工单快照工作区。",
+          workspacePolicySnapshot: {
+            workspacePath: "/srv/snapshot-workspace",
+          },
+        },
+      }),
+    });
+    assert.equal(dispatchSnapshot.status, 200);
+
+    const pullSnapshot = await fetch(`${baseUrl}/api/platform/worker/runs/pull`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-runtime",
+      }),
+    });
+    assert.equal(pullSnapshot.status, 200);
+    const snapshotPayload = await pullSnapshot.json() as {
+      executionContract?: { workspacePath?: string };
+    };
+    assert.equal(snapshotPayload.executionContract?.workspacePath, "/srv/snapshot-workspace");
+  } finally {
+    server.close();
+  }
+});
