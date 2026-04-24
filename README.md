@@ -36,7 +36,7 @@
 - 平台 Web 登录口令当前通过环境变量 `THEMIS_PLATFORM_WEB_ACCESS_TOKEN`（可选 `THEMIS_PLATFORM_WEB_ACCESS_TOKEN_LABEL`）提供；平台服务 Bearer token 仍由 `infra/local/platform-service-tokens.json` 承载。
 - 当前支持本地 runtime snapshot：`src/server/platform-main.ts` 会默认把 `nodes / control-plane / workflow / worker-runs` 状态落到 `infra/platform/runtime-state.json`；如需自定义路径，可配置 `THEMIS_PLATFORM_RUNTIME_SNAPSHOT_FILE`。
 - 当前支持本地 execution runtime store：`src/server/platform-main.ts` 会默认把每个 run 的 `assigned-run / state / events` 写到 `infra/platform/runtime-runs/`；如需自定义路径，可配置 `THEMIS_PLATFORM_EXECUTION_RUNTIME_ROOT`。
-- 新建 agent 当前会默认落一个 `runtimeProfile(model=gpt-5.4, reasoning=xhigh)`；如需偏离，可继续走 `execution-boundary/update` 覆盖。
+- 新建 agent 当前会默认落一个 `runtimeProfile(model=gpt-5.5, reasoning=xhigh)`；如需偏离，可继续走 `execution-boundary/update` 覆盖。
 - 当前已支持 `THEMIS_PLATFORM_CONTROL_PLANE_DRIVER=mysql`：会把本地 shared cache SQLite 放到 `THEMIS_MANAGED_AGENT_CONTROL_PLANE_DATABASE_FILE`（默认 `infra/platform/control-plane.db`），并通过 `src/server/platform-control-plane-mirror.ts` 在 `shared cache SQLite + MySQL shared snapshot store` 之间做 bootstrap / flush / rollback。
 - 平台常驻建议直接使用根目录 `./themis-platform` 或 `npm run start:platform`，不要再借主仓 `./themis` 的兼容入口。
 - 平台机本地运行态会写入 `infra/local/` 与 `infra/platform/`，这两个目录已经加入 `.gitignore`，不应纳入版本控制。

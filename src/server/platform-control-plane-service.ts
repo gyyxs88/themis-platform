@@ -101,7 +101,7 @@ export interface PlatformControlPlaneServiceOptions {
   snapshot?: PlatformControlPlaneServiceSnapshot;
 }
 
-const DEFAULT_PLATFORM_RUNTIME_MODEL = "gpt-5.4";
+const DEFAULT_PLATFORM_RUNTIME_MODEL = "gpt-5.5";
 const DEFAULT_PLATFORM_RUNTIME_REASONING = "xhigh";
 
 export function createInMemoryPlatformControlPlaneService(
