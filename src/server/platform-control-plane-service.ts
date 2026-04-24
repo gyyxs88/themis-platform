@@ -409,12 +409,20 @@ export function createInMemoryPlatformControlPlaneService(
       }
 
       const timestamp = now();
+      const workspacePolicyInput = input.boundary.workspacePolicy;
+      const canonicalWorkspacePath = normalizeOptionalText(workspacePolicyInput?.canonicalWorkspacePath)
+        ?? normalizeOptionalText(workspacePolicyInput?.workspacePath)
+        ?? context.workspacePolicy.canonicalWorkspacePath
+        ?? null;
+      const additionalWorkspacePaths = Array.isArray(workspacePolicyInput?.additionalWorkspacePaths)
+        ? normalizeStringList(workspacePolicyInput.additionalWorkspacePaths)
+        : Array.isArray(workspacePolicyInput?.additionalDirectories)
+          ? normalizeStringList(workspacePolicyInput.additionalDirectories)
+          : context.workspacePolicy.additionalWorkspacePaths ?? [];
       const workspacePolicy: ManagedAgentPlatformWorkspacePolicyRecord = {
         ...context.workspacePolicy,
-        canonicalWorkspacePath: input.boundary.workspacePolicy?.canonicalWorkspacePath ?? context.workspacePolicy.canonicalWorkspacePath ?? null,
-        additionalWorkspacePaths: input.boundary.workspacePolicy?.additionalWorkspacePaths
-          ?? context.workspacePolicy.additionalWorkspacePaths
-          ?? [],
+        canonicalWorkspacePath,
+        additionalWorkspacePaths,
         updatedAt: timestamp,
       };
       const runtimeProfile: ManagedAgentPlatformRuntimeProfileRecord = {

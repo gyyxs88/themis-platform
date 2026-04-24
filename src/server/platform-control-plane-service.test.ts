@@ -62,6 +62,19 @@ test("PlatformControlPlaneService 会提供 agents 与 projects 最小控制面�
   assert.equal(boundary?.runtimeProfile.model, "gpt-5.4-mini");
   assert.equal(boundary?.runtimeProfile.reasoning, "high");
 
+  const aliasBoundary = service.updateExecutionBoundary({
+    ownerPrincipalId: "principal-platform-owner",
+    agentId: "agent-alpha",
+    boundary: {
+      workspacePolicy: {
+        workspacePath: "/srv/platform-beta",
+        additionalDirectories: ["/srv/platform-shared", "/srv/platform-shared"],
+      },
+    },
+  });
+  assert.equal(aliasBoundary?.workspacePolicy.canonicalWorkspacePath, "/srv/platform-beta");
+  assert.deepEqual(aliasBoundary?.workspacePolicy.additionalWorkspacePaths, ["/srv/platform-shared"]);
+
   const card = service.updateAgentCard({
     ownerPrincipalId: "principal-platform-owner",
     agentId: "agent-alpha",

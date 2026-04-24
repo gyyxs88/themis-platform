@@ -158,6 +158,32 @@ test("createPlatformApp 会暴露 agents 与 projects 最小控制面路由", as
     assert.equal(boundary.runtimeProfile?.model, "gpt-5.4-mini");
     assert.equal(boundary.runtimeProfile?.reasoning, "high");
 
+    const aliasBoundaryResponse = await fetch(`${baseUrl}/api/platform/agents/execution-boundary/update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        agentId: "agent-alpha",
+        boundary: {
+          workspacePolicy: {
+            workspacePath: "/srv/platform-beta",
+            additionalDirectories: ["/srv/platform-shared"],
+          },
+        },
+      }),
+    });
+    assert.equal(aliasBoundaryResponse.status, 200);
+    const aliasBoundary = await aliasBoundaryResponse.json() as {
+      workspacePolicy?: {
+        canonicalWorkspacePath?: string;
+        additionalWorkspacePaths?: string[];
+      };
+    };
+    assert.equal(aliasBoundary.workspacePolicy?.canonicalWorkspacePath, "/srv/platform-beta");
+    assert.deepEqual(aliasBoundary.workspacePolicy?.additionalWorkspacePaths, ["/srv/platform-shared"]);
+
     const spawnPolicyResponse = await fetch(`${baseUrl}/api/platform/agents/spawn-policy/update`, {
       method: "POST",
       headers: {
