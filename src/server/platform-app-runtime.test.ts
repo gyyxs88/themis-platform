@@ -297,6 +297,11 @@ test("createPlatformApp 分配 queued work-item 时优先使用工单 snapshot�
             approvalPolicy: "on-request",
             authAccountId: "snapshot-auth",
             thirdPartyProviderId: "snapshot-provider",
+            secretEnvRefs: [{
+              envName: "CLOUDFLARE_API_TOKEN",
+              secretRef: "cloudflare-readonly-token",
+              required: true,
+            }],
           },
         },
       }),
@@ -322,6 +327,12 @@ test("createPlatformApp 分配 queued work-item 时优先使用工单 snapshot�
         model?: string;
         sandboxMode?: string;
         approvalPolicy?: string;
+        secretEnvRefs?: Array<{
+          envName?: string;
+          secretRef?: string;
+          required?: boolean;
+          value?: string;
+        }>;
       };
     };
     assert.equal(snapshotPayload.executionContract?.workspacePath, "/srv/snapshot-workspace");
@@ -330,6 +341,15 @@ test("createPlatformApp 分配 queued work-item 时优先使用工单 snapshot�
     assert.equal(snapshotPayload.executionContract?.model, "gpt-5.4-mini");
     assert.equal(snapshotPayload.executionContract?.sandboxMode, "workspace-write");
     assert.equal(snapshotPayload.executionContract?.approvalPolicy, "on-request");
+    assert.deepEqual(snapshotPayload.executionContract?.secretEnvRefs, [{
+      envName: "CLOUDFLARE_API_TOKEN",
+      secretRef: "cloudflare-readonly-token",
+      required: true,
+    }]);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(snapshotPayload.executionContract?.secretEnvRefs?.[0] ?? {}, "value"),
+      false,
+    );
   } finally {
     server.close();
   }

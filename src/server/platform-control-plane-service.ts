@@ -21,6 +21,7 @@ import type {
   ManagedAgentPlatformPrincipalRecord,
   ManagedAgentPlatformProjectWorkspaceBindingRecord,
   ManagedAgentPlatformRuntimeProfileRecord,
+  ManagedAgentPlatformSecretEnvRef,
   ManagedAgentPlatformSpawnPolicyRecord,
   ManagedAgentPlatformThirdPartyProviderRecord,
   ManagedAgentPlatformWorkspacePolicyRecord,
@@ -447,6 +448,9 @@ export function createInMemoryPlatformControlPlaneService(
         thirdPartyProviderId: normalizeOptionalText(runtimeProfileInput?.thirdPartyProviderId)
           ?? context.runtimeProfile.thirdPartyProviderId
           ?? null,
+        secretEnvRefs: Array.isArray(runtimeProfileInput?.secretEnvRefs)
+          ? normalizeSecretEnvRefs(runtimeProfileInput.secretEnvRefs)
+          : context.runtimeProfile.secretEnvRefs,
         updatedAt: timestamp,
       };
 
@@ -791,6 +795,25 @@ function normalizeStringList(values: string[] | undefined): string[] {
     .filter((value): value is string => Boolean(value));
 
   return Array.from(new Set(normalized));
+}
+
+function normalizeSecretEnvRefs(values: ManagedAgentPlatformSecretEnvRef[]): ManagedAgentPlatformSecretEnvRef[] {
+  return values
+    .map((entry) => {
+      const envName = normalizeOptionalText(entry.envName);
+      const secretRef = normalizeOptionalText(entry.secretRef);
+
+      if (!envName || !/^[A-Z_][A-Z0-9_]*$/.test(envName) || !secretRef) {
+        return null;
+      }
+
+      return {
+        envName,
+        secretRef,
+        ...(typeof entry.required === "boolean" ? { required: entry.required } : {}),
+      };
+    })
+    .filter((entry): entry is ManagedAgentPlatformSecretEnvRef => entry !== null);
 }
 
 function applyOptionalCardTextPatch(

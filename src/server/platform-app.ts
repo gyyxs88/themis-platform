@@ -60,7 +60,10 @@ import type {
   ManagedAgentPlatformMeetingRoomTerminatePayload,
 } from "themis-contracts/managed-agent-platform-meetings";
 import type { ManagedAgentPlatformOncallSummaryPayload } from "themis-contracts/managed-agent-platform-oncall";
-import type { ManagedAgentPlatformWorkItemRecord } from "themis-contracts/managed-agent-platform-shared";
+import type {
+  ManagedAgentPlatformSecretEnvRef,
+  ManagedAgentPlatformWorkItemRecord,
+} from "themis-contracts/managed-agent-platform-shared";
 import { readPlatformAsset } from "./platform-assets.js";
 import {
   createInMemoryPlatformCollaborationService,
@@ -1045,6 +1048,7 @@ function resolveRuntimeContractForQueuedWorkItem(
   const credentialId = normalizeOptionalText(runtimeProfile.authAccountId);
   const providerId = normalizeOptionalText(runtimeProfile.thirdPartyProviderId)
     ?? normalizeOptionalText(runtimeProfile.provider);
+  const secretEnvRefs = normalizeSecretEnvRefs(runtimeProfile.secretEnvRefs);
 
   return {
     ...(credentialId ? { credentialId } : {}),
@@ -1056,7 +1060,37 @@ function resolveRuntimeContractForQueuedWorkItem(
     ...(typeof runtimeProfile.networkAccessEnabled === "boolean"
       ? { networkAccessEnabled: runtimeProfile.networkAccessEnabled }
       : {}),
+    ...(secretEnvRefs ? { secretEnvRefs } : {}),
   };
+}
+
+function normalizeSecretEnvRefs(value: unknown): ManagedAgentPlatformSecretEnvRef[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const normalized = value
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+
+      const envName = normalizeOptionalText(entry.envName);
+      const secretRef = normalizeOptionalText(entry.secretRef);
+
+      if (!envName || !/^[A-Z_][A-Z0-9_]*$/.test(envName) || !secretRef) {
+        return null;
+      }
+
+      return {
+        envName,
+        secretRef,
+        ...(typeof entry.required === "boolean" ? { required: entry.required } : {}),
+      };
+    })
+    .filter((entry): entry is ManagedAgentPlatformSecretEnvRef => entry !== null);
+
+  return normalized.length > 0 ? normalized : null;
 }
 
 function resolveSandboxModeFromContextPacket(contextPacket: unknown): string | null {
