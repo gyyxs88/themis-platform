@@ -9,6 +9,9 @@ import type {
   ManagedAgentPlatformNodeReclaimPayload,
   ManagedAgentPlatformWorkerCompletionResult,
   ManagedAgentPlatformNodeRegisterPayload,
+  ManagedAgentPlatformWorkerSecretAckPayload,
+  ManagedAgentPlatformWorkerSecretPullPayload,
+  ManagedAgentPlatformWorkerSecretPushPayload,
   ManagedAgentPlatformWorkerPullPayload,
   ManagedAgentPlatformWorkerRunCompletePayload,
   ManagedAgentPlatformWorkerRunStatusPayload,
@@ -86,6 +89,10 @@ import {
 import { createInMemoryPlatformOncallService, type PlatformOncallService } from "./platform-oncall-service.js";
 import { createInMemoryPlatformWorkerRunService, type PlatformWorkerRunService } from "./platform-worker-run-service.js";
 import {
+  createInMemoryPlatformWorkerSecretDeliveryService,
+  type PlatformWorkerSecretDeliveryService,
+} from "./platform-worker-secret-delivery-service.js";
+import {
   createInMemoryPlatformWorkflowService,
   type PlatformQueuedWorkItemContext,
   type PlatformWorkflowService,
@@ -109,6 +116,7 @@ export interface PlatformAppOptions {
   executionRuntimeStore?: PlatformExecutionRuntimeStore;
   nodeService?: PlatformNodeService;
   workerRunService?: PlatformWorkerRunService;
+  workerSecretDeliveryService?: PlatformWorkerSecretDeliveryService;
   governanceService?: PlatformGovernanceService;
   collaborationService?: PlatformCollaborationService;
   workflowService?: PlatformWorkflowService;
@@ -126,6 +134,9 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
   const defaultWorkspacePath = options.defaultWorkspacePath ?? "/tmp/themis-shared-worker-v1";
   const nodeService = options.nodeService ?? createInMemoryPlatformNodeService();
   const workerRunService = options.workerRunService ?? createInMemoryPlatformWorkerRunService({
+    nodeService,
+  });
+  const workerSecretDeliveryService = options.workerSecretDeliveryService ?? createInMemoryPlatformWorkerSecretDeliveryService({
     nodeService,
   });
   connectNodeExecutionLeaseRuntime(nodeService, workerRunService);
@@ -166,6 +177,7 @@ export function createPlatformApp(options: PlatformAppOptions = {}): Server {
       executionRuntimeStore: options.executionRuntimeStore,
       nodeService,
       workerRunService,
+      workerSecretDeliveryService,
       governanceService,
       collaborationService,
       workflowService,
@@ -187,6 +199,7 @@ interface HandlePlatformRequestOptions {
   executionRuntimeStore?: PlatformExecutionRuntimeStore;
   nodeService: PlatformNodeService;
   workerRunService: PlatformWorkerRunService;
+  workerSecretDeliveryService: PlatformWorkerSecretDeliveryService;
   governanceService: PlatformGovernanceService;
   collaborationService: PlatformCollaborationService;
   workflowService: PlatformWorkflowService;
@@ -800,6 +813,39 @@ async function handlePlatformRequest(
         : writeJson(response, 404, buildNotFoundErrorResponse(`Run ${payload.runId ?? "unknown"} not found.`));
     }
 
+    if (method === "POST" && url.pathname === "/api/platform/worker/secrets/push") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkerSecretPushPayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.workerSecretDeliveryService.pushSecret(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.delivery?.nodeId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/worker/secrets/pull") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkerSecretPullPayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.workerSecretDeliveryService.pullSecrets(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+    }
+
+    if (method === "POST" && url.pathname === "/api/platform/worker/secrets/ack") {
+      const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkerSecretAckPayload>(request, response);
+      if (!payload) {
+        return;
+      }
+      const result = options.workerSecretDeliveryService.ackSecrets(payload);
+      return result
+        ? writeJson(response, 200, result)
+        : writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
+    }
+
     if (method === "POST" && url.pathname === "/api/platform/worker/runs/pull") {
       const payload = await readAuthorizedPayload<ManagedAgentPlatformWorkerPullPayload>(request, response);
       if (!payload) {
@@ -956,6 +1002,13 @@ function scheduleQueuedWorkItemForNode(
     ownerPrincipalId: payload.ownerPrincipalId,
     organizationId: nodeDetail.organization.organizationId,
     excludeWorkItemIds: excludedWorkItemIds,
+    filter: (candidate) => {
+      const contract = resolveRuntimeContractForQueuedWorkItem(payload.ownerPrincipalId, candidate, options);
+      return nodeHasRequiredSecrets(
+        nodeDetail.node.secretCapabilities,
+        Array.isArray(contract.secretEnvRefs) ? contract.secretEnvRefs : undefined,
+      );
+    },
   });
 
   if (!queuedWorkItem) {
@@ -979,6 +1032,27 @@ function scheduleQueuedWorkItemForNode(
       options,
     ),
   });
+}
+
+function nodeHasRequiredSecrets(
+  nodeSecretCapabilities: string[] | undefined,
+  secretEnvRefs: ManagedAgentPlatformSecretEnvRef[] | undefined,
+): boolean {
+  const requiredRefs = (secretEnvRefs ?? [])
+    .filter((entry) => entry.required === true)
+    .map((entry) => normalizeOptionalText(entry.secretRef))
+    .filter((value): value is string => Boolean(value));
+
+  if (requiredRefs.length === 0) {
+    return true;
+  }
+
+  const nodeSecretRefs = new Set(
+    (nodeSecretCapabilities ?? [])
+      .map((value) => normalizeOptionalText(value))
+      .filter((value): value is string => Boolean(value)),
+  );
+  return requiredRefs.every((secretRef) => nodeSecretRefs.has(secretRef));
 }
 
 function resolveWorkspacePathForQueuedWorkItem(

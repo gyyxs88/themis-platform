@@ -178,6 +178,7 @@ test("createPlatformApp 分配 queued work-item 时优先使用工单 snapshot�
       status: "online",
       slotCapacity: 2,
       slotAvailable: 2,
+      secretCapabilities: ["cloudflare-readonly-token"],
       createdAt: "2026-04-24T14:20:00.000Z",
       updatedAt: "2026-04-24T14:20:00.000Z",
     }],
@@ -348,6 +349,201 @@ test("createPlatformApp 分配 queued work-item 时优先使用工单 snapshot�
     }]);
     assert.equal(
       Object.prototype.hasOwnProperty.call(snapshotPayload.executionContract?.secretEnvRefs?.[0] ?? {}, "value"),
+      false,
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test("createPlatformApp 会按 worker secret capability 过滤派工并支持平台 secret delivery", async () => {
+  const organization = {
+    organizationId: "org-platform",
+    ownerPrincipalId: "principal-platform-owner",
+    displayName: "Platform Team",
+    slug: "platform-team",
+    createdAt: "2026-04-27T12:00:00.000Z",
+    updatedAt: "2026-04-27T12:00:00.000Z",
+  };
+  const targetAgent = {
+    agentId: "agent-secret",
+    organizationId: organization.organizationId,
+    displayName: "Secret Agent",
+    departmentRole: "Platform",
+    status: "active" as const,
+    createdAt: "2026-04-27T12:00:00.000Z",
+    updatedAt: "2026-04-27T12:00:00.000Z",
+  };
+  const nodeService = createInMemoryPlatformNodeService({
+    now: () => "2026-04-27T12:00:00.000Z",
+    organizations: [organization],
+    nodes: [{
+      nodeId: "node-secret",
+      organizationId: organization.organizationId,
+      displayName: "Worker Secret",
+      status: "online",
+      slotCapacity: 1,
+      slotAvailable: 1,
+      createdAt: "2026-04-27T12:00:00.000Z",
+      updatedAt: "2026-04-27T12:00:00.000Z",
+    }],
+  });
+  const workerRunService = createInMemoryPlatformWorkerRunService({
+    nodeService,
+    now: () => "2026-04-27T12:01:00.000Z",
+  });
+  const workflowService = createInMemoryPlatformWorkflowService({
+    workerRunService,
+    now: () => "2026-04-27T12:01:00.000Z",
+    agentSeeds: [{
+      ownerPrincipalId: "principal-platform-owner",
+      organization,
+      agent: targetAgent,
+    }],
+  });
+  const server = createPlatformApp({
+    nodeService,
+    workerRunService,
+    workflowService,
+  });
+
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const dispatch = await fetch(`${baseUrl}/api/platform/work-items/dispatch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItem: {
+          targetAgentId: "agent-secret",
+          sourceType: "human",
+          goal: "验证 Cloudflare DNS。",
+          runtimeProfileSnapshot: {
+            secretEnvRefs: [{
+              envName: "CLOUDFLARE_API_TOKEN",
+              secretRef: "cloudflare-readonly-token",
+              required: true,
+            }],
+          },
+        },
+      }),
+    });
+    assert.equal(dispatch.status, 200);
+
+    const pullBeforeSecret = await fetch(`${baseUrl}/api/platform/worker/runs/pull`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-secret",
+      }),
+    });
+    assert.equal(pullBeforeSecret.status, 200);
+    assert.deepEqual(await pullBeforeSecret.json(), {});
+
+    const pushSecret = await fetch(`${baseUrl}/api/platform/worker/secrets/push`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        delivery: {
+          nodeId: "node-secret",
+          secretRef: "cloudflare-readonly-token",
+          value: "worker-secret-value",
+        },
+      }),
+    });
+    assert.equal(pushSecret.status, 200);
+    const pushPayload = await pushSecret.json() as {
+      delivery?: { deliveryId?: string; value?: string; status?: string };
+    };
+    assert.equal(pushPayload.delivery?.status, "pending");
+    assert.equal(Object.prototype.hasOwnProperty.call(pushPayload.delivery ?? {}, "value"), false);
+
+    const pullSecret = await fetch(`${baseUrl}/api/platform/worker/secrets/pull`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-secret",
+      }),
+    });
+    assert.equal(pullSecret.status, 200);
+    const pullSecretPayload = await pullSecret.json() as {
+      deliveries?: Array<{ deliveryId?: string; secretRef?: string; value?: string }>;
+    };
+    assert.equal(pullSecretPayload.deliveries?.[0]?.secretRef, "cloudflare-readonly-token");
+    assert.equal(pullSecretPayload.deliveries?.[0]?.value, "worker-secret-value");
+
+    const ackSecret = await fetch(`${baseUrl}/api/platform/worker/secrets/ack`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-secret",
+        deliveryIds: [pullSecretPayload.deliveries?.[0]?.deliveryId],
+        secretRefs: ["cloudflare-readonly-token"],
+      }),
+    });
+    assert.equal(ackSecret.status, 200);
+    const ackPayload = await ackSecret.json() as {
+      deliveries?: Array<{ value?: string; status?: string }>;
+      secretRefs?: string[];
+    };
+    assert.equal(ackPayload.deliveries?.[0]?.status, "delivered");
+    assert.equal(Object.prototype.hasOwnProperty.call(ackPayload.deliveries?.[0] ?? {}, "value"), false);
+    assert.deepEqual(ackPayload.secretRefs, ["cloudflare-readonly-token"]);
+
+    const heartbeat = await fetch(`${baseUrl}/api/platform/nodes/heartbeat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        node: {
+          nodeId: "node-secret",
+          slotAvailable: 1,
+          secretCapabilities: ["cloudflare-readonly-token"],
+        },
+      }),
+    });
+    assert.equal(heartbeat.status, 200);
+
+    const pullAfterSecret = await fetch(`${baseUrl}/api/platform/worker/runs/pull`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        nodeId: "node-secret",
+      }),
+    });
+    assert.equal(pullAfterSecret.status, 200);
+    const runPayload = await pullAfterSecret.json() as {
+      run?: { nodeId?: string };
+      executionContract?: { secretEnvRefs?: Array<{ secretRef?: string; value?: string }> };
+    };
+    assert.equal(runPayload.run?.nodeId, "node-secret");
+    assert.equal(runPayload.executionContract?.secretEnvRefs?.[0]?.secretRef, "cloudflare-readonly-token");
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(runPayload.executionContract?.secretEnvRefs?.[0] ?? {}, "value"),
       false,
     );
   } finally {

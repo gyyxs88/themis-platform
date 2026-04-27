@@ -76,6 +76,7 @@ export interface PlatformWorkflowService {
     ownerPrincipalId: string;
     organizationId?: string;
     excludeWorkItemIds?: string[];
+    filter?: (context: PlatformQueuedWorkItemContext) => boolean;
   }): PlatformQueuedWorkItemContext | null;
   dispatchWorkItem(payload: ManagedAgentPlatformWorkItemDispatchPayload): ManagedAgentPlatformWorkItemDispatchResult;
   cancelWorkItem(payload: ManagedAgentPlatformWorkItemCancelPayload): ManagedAgentPlatformWorkItemCancelResult | null;
@@ -260,6 +261,7 @@ export function createInMemoryPlatformWorkflowService(
         .filter((candidate) => candidate.workItem.status === "queued")
         .filter((candidate) => !input.organizationId || candidate.organization.organizationId === input.organizationId)
         .filter((candidate) => !excludedWorkItemIds.has(candidate.workItem.workItemId))
+        .filter((candidate) => input.filter?.(cloneWorkItemContext(candidate)) ?? true)
         .sort((left, right) => compareWorkItems(left.workItem, right.workItem))[0];
 
       return context ? cloneWorkItemContext(context) : null;

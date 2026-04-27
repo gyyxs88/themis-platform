@@ -391,11 +391,14 @@ function isPlatformPathAllowedForRole(pathname: string, role: PlatformServiceRol
       || pathname.startsWith("/api/platform/work-items/")
       || pathname.startsWith("/api/platform/runs/")
       || pathname.startsWith("/api/platform/projects/")
+      || pathname === "/api/platform/worker/secrets/push"
       || isGatewayNodeManagementPath(pathname);
   }
 
   return pathname.startsWith("/api/platform/nodes/")
-    || pathname.startsWith("/api/platform/worker/");
+    || pathname.startsWith("/api/platform/worker/runs/")
+    || pathname === "/api/platform/worker/secrets/pull"
+    || pathname === "/api/platform/worker/secrets/ack";
 }
 
 function isGatewayNodeManagementPath(pathname: string): boolean {

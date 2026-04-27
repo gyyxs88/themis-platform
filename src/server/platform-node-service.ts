@@ -151,6 +151,7 @@ export function createInMemoryPlatformNodeService(
         workspaceCapabilities: normalizeUniqueStrings(payload.node.workspaceCapabilities),
         credentialCapabilities: normalizeUniqueStrings(payload.node.credentialCapabilities),
         providerCapabilities: normalizeUniqueStrings(payload.node.providerCapabilities),
+        secretCapabilities: normalizeUniqueStrings(payload.node.secretCapabilities),
         heartbeatTtlSeconds: normalizeOptionalPositiveInteger(payload.node.heartbeatTtlSeconds),
         lastHeartbeatAt: timestamp,
         createdAt: existingNode?.createdAt ?? timestamp,
@@ -194,6 +195,9 @@ export function createInMemoryPlatformNodeService(
         providerCapabilities: payload.node.providerCapabilities == null
           ? existingNode.providerCapabilities
           : normalizeUniqueStrings(payload.node.providerCapabilities),
+        secretCapabilities: payload.node.secretCapabilities == null
+          ? existingNode.secretCapabilities
+          : normalizeUniqueStrings(payload.node.secretCapabilities),
         heartbeatTtlSeconds: payload.node.heartbeatTtlSeconds == null
           ? existingNode.heartbeatTtlSeconds
           : normalizeOptionalPositiveInteger(payload.node.heartbeatTtlSeconds),

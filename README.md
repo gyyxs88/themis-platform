@@ -6,7 +6,7 @@
 
 - 当前入口：`src/server/platform-main.ts`
 - 独立 CLI：仓库根目录 `./themis-platform`
-- 当前状态：已具备最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|card/update|execution-boundary/update|spawn-policy/update|pause|resume|archive` 控制面、`projects/workspace-binding/list|detail|upsert` 项目绑定、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 治理读面、`oncall/summary` 值班建议、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`meeting-rooms/list|create|detail|participants/add|messages/create|append-agent-reply|append-agent-failure|resolutions/create|promote|close|terminate` 平台内部会议室控制面、`Web Access + Platform Service Bearer` 鉴权链，以及 `worker/runs/pull|update|complete` 自动调度执行链路；当前平台页已新增“会议室观察台”，支持直接查看房间、轮次、消息、结论与参与者，并在必要时强制终止会议，而 `worker pull` 已能把 `queued work-item` 结合项目工作区绑定自动分配成新 `run + execution lease`
+- 当前状态：已具备最小平台页面、`nodes/register|heartbeat|list|detail|drain|offline|reclaim` API、`agents/list|detail|create|card/update|execution-boundary/update|spawn-policy/update|pause|resume|archive` 控制面、`projects/workspace-binding/list|detail|upsert` 项目绑定、`agents/governance-overview|waiting/list|collaboration-dashboard|handoffs/list` 治理读面、`oncall/summary` 值班建议、`work-items/list|detail|dispatch|respond|escalate|cancel` 与 `agents/mailbox/list|pull|ack|respond` 协作读写面、`runs/list|detail` recent runs 读面、`meeting-rooms/list|create|detail|participants/add|messages/create|append-agent-reply|append-agent-failure|resolutions/create|promote|close|terminate` 平台内部会议室控制面、`Web Access + Platform Service Bearer` 鉴权链、`worker/secrets/push|pull|ack` worker secret 下发链路，以及 `worker/runs/pull|update|complete` 自动调度执行链路；当前平台页已新增“会议室观察台”，支持直接查看房间、轮次、消息、结论与参与者，并在必要时强制终止会议，而 `worker pull` 已能把 `queued work-item` 结合项目工作区绑定和节点 `secretCapabilities` 自动分配成新 `run + execution lease`
 
 当前最小能力：
 
@@ -23,6 +23,7 @@
 - `POST /api/platform/agents/mailbox/list|pull|ack|respond` 提供最小 mailbox 读写 API
 - `POST /api/platform/runs/list|detail` 提供最小 recent runs 读面
 - `POST /api/platform/meeting-rooms/list|create|detail|participants/add|messages/create|append-agent-reply|append-agent-failure|resolutions/create|promote|close|terminate` 提供最小平台内部会议室 API
+- `POST /api/platform/worker/secrets/push|pull|ack` 提供主 Themis 到指定 Worker Node 的 secret delivery 中转；`push` 不回显 secret 值，`pull` 仅供 worker token 拉取目标节点 pending delivery
 - `POST /api/platform/worker/runs/pull|update|complete` 提供最小 Worker 执行回传 API，其中 `pull` 已能把 `queued work-item` 自动转成 `run + execution lease`
 - `./themis-platform auth platform list|add|remove|rename` 提供平台服务令牌的最小本地治理入口
 - `./themis-platform doctor worker-fleet` 提供 Worker Fleet 巡检摘要
@@ -59,7 +60,7 @@
 - 当前治理页已覆盖最小 `agents + projects + governance-overview + waiting/list + collaboration-dashboard + handoffs/list + oncall/summary + work-items + mailbox + recent runs`。
 - 当前平台层已持有内部会议室真相源，会议室状态也会进入 runtime snapshot；主 Themis 只通过 gateway 消费，不在本地持有 room 持久化事实。平台 Web 当前提供会议室观察台和终止会议治理动作，但不承担主持发言；主持与正常收口继续由主 Themis 负责。
 - 当前 `platform-main` 已具备真实部署入口、最小 `Web Access + Bearer` 鉴权语义，以及 `mysql` driver 下的 `shared cache SQLite + MySQL shared snapshot store` wiring；平台写动作与 scheduler tick 现在都会先更新本地服务态，再把 shared snapshot flush 到本地 cache 与 MySQL，flush 失败时也会恢复本地 shared cache 和内存态。
-- 当前 scheduler/runtime 主链已补入第一刀：`worker pull` 会根据节点所属组织挑选最高优先级 `queued work-item`，并优先使用 `projects/workspace-binding` 里的 `lastActiveWorkspacePath / canonicalWorkspacePath` 生成执行合同；这条调度主链现在也会跟随 shared snapshot 一起进入本地 shared cache 与 MySQL mirror。
+- 当前 scheduler/runtime 主链已补入第一刀：`worker pull` 会根据节点所属组织挑选最高优先级 `queued work-item`，并优先使用 `projects/workspace-binding` 里的 `lastActiveWorkspacePath / canonicalWorkspacePath` 生成执行合同；如果执行合同含 `required=true` 的 `secretEnvRefs`，只会分配给 `secretCapabilities` 已声明具备对应 `secretRef` 的节点；这条调度主链现在也会跟随 shared snapshot 一起进入本地 shared cache 与 MySQL mirror。
 - 当前 scheduler/runtime 主链已补入第二刀：`platform-main` 现在会按 `THEMIS_PLATFORM_SCHEDULER_INTERVAL_MS` 定期运行 `scheduler tick`，自动回收 `offline / draining` 节点上的 active lease，并把对应 work-item 重新排回 `queued`，供后续在线节点重新拉取；reclaim 后的控制面事实也会一起进入本地 shared cache 与 MySQL mirror。
 - 当前 runtime 持久化已补入第一刀：平台路由上的状态变更现在会触发本地 snapshot 落盘，`platform-main` 重启后也会从 `runtime-state.json` 恢复 `nodes / control-plane / workflow / worker-runs` 这四束平台事实。
 - 当前 runtime store / execution runtime 已补入第二刀：`worker/runs/pull|update|complete` 与 `scheduler tick reclaim` 现在都会把每个 run 的 `assigned-run.json / state.json / events.ndjson` 写入 `infra/platform/runtime-runs/`。
