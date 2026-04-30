@@ -347,8 +347,16 @@ export function createInMemoryPlatformControlPlaneService(
       }
 
       const timestamp = now();
-      const principalId = generatePrincipalId();
-      const agentId = generateAgentId();
+      const principalId = createUniqueGeneratedId(
+        generatePrincipalId,
+        (candidate) => state.principals.has(candidate),
+        "principal",
+      );
+      const agentId = createUniqueGeneratedId(
+        generateAgentId,
+        (candidate) => state.agents.has(candidate),
+        "agent",
+      );
       const principal: ManagedAgentPlatformPrincipalRecord = {
         principalId,
         organizationId: organization.organizationId,
@@ -585,6 +593,22 @@ function createIdFactory(prefix: string) {
   };
 }
 
+function createUniqueGeneratedId(
+  generateId: () => string,
+  exists: (candidate: string) => boolean,
+  label: string,
+): string {
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const candidate = normalizeText(generateId());
+
+    if (!exists(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Unable to allocate a unique ${label} id.`);
+}
+
 function normalizeText(value: string) {
   const normalized = typeof value === "string" ? value.trim() : "";
 
@@ -665,6 +689,8 @@ function applyAgentCardPatch(
   },
   now: string,
 ): ManagedAgentPlatformAgentCardRecord {
+  assertSupportedAgentCardPatch(patch);
+
   const next: ManagedAgentPlatformAgentCardRecord = {
     ...current,
     employeeCode: hasOwn(patch, "employeeCode")
@@ -707,6 +733,30 @@ function applyAgentCardPatch(
   }
 
   return next;
+}
+
+const SUPPORTED_AGENT_CARD_PATCH_FIELDS = new Set([
+  "employeeCode",
+  "title",
+  "domainTags",
+  "skillTags",
+  "responsibilitySummary",
+  "allowedScopes",
+  "forbiddenScopes",
+  "workStyle",
+  "collaborationNotes",
+  "representativeProjects",
+  "currentFocus",
+  "reviewSummary",
+  "lastReviewedAt",
+]);
+
+function assertSupportedAgentCardPatch(patch: object): void {
+  const unsupportedFields = Object.keys(patch).filter((field) => !SUPPORTED_AGENT_CARD_PATCH_FIELDS.has(field));
+
+  if (unsupportedFields.length > 0) {
+    throw new Error(`Unsupported agent card field(s): ${unsupportedFields.join(", ")}.`);
+  }
 }
 
 function ensureAgentCard(

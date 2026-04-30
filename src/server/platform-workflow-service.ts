@@ -697,20 +697,20 @@ export function createInMemoryPlatformWorkflowService(
   }
 
   function findAgentContext(ownerPrincipalId: string, agentId: string): { organization: ManagedAgentPlatformOrganizationRecord; agent: ManagedAgentPlatformAgentRecord } | null {
-    for (const assignedRun of options.workerRunService.listAssignedRuns({ ownerPrincipalId })) {
-      if (assignedRun.targetAgent.agentId === agentId) {
-        return {
-          organization: { ...assignedRun.organization },
-          agent: { ...assignedRun.targetAgent },
-        };
-      }
-    }
-
     for (const seed of agentSeeds) {
       if (seed.ownerPrincipalId === ownerPrincipalId && seed.agent.agentId === agentId) {
         return {
           organization: { ...seed.organization },
           agent: { ...seed.agent },
+        };
+      }
+    }
+
+    for (const assignedRun of options.workerRunService.listAssignedRuns({ ownerPrincipalId })) {
+      if (assignedRun.targetAgent.agentId === agentId) {
+        return {
+          organization: { ...assignedRun.organization },
+          agent: { ...assignedRun.targetAgent },
         };
       }
     }

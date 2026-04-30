@@ -389,6 +389,57 @@ test("PlatformWorkflowService 会在已有 snapshot 基础上继续递增 work-i
   assert.equal(responded?.responseMailboxEntry.mailboxEntryId, "mailbox-entry-platform-8");
 });
 
+test("PlatformWorkflowService 派工时优先使用最新注册的 agent 快照", () => {
+  const organization = buildOrganization();
+  const oldAgent = buildAgent("agent-1", "基础设施盘点负责人");
+  const currentAgent = {
+    ...buildAgent("agent-1", "青灯"),
+    departmentRole: "运维资产巡检负责人",
+    updatedAt: "2026-04-30T07:50:40.000Z",
+  };
+  const nodeService = createInMemoryPlatformNodeService({
+    organizations: [organization],
+  });
+  const workerRunService = createInMemoryPlatformWorkerRunService({
+    nodeService,
+    assignedRuns: [
+      buildAssignedRun({
+        organization,
+        targetAgent: oldAgent,
+        workItemId: "work-item-old",
+        goal: "历史巡检任务。",
+        status: "waiting_agent",
+        waitingFor: "agent",
+        priority: "normal",
+        updatedAt: "2026-04-30T07:40:00.000Z",
+      }),
+    ],
+  });
+  const workflowService = createInMemoryPlatformWorkflowService({
+    workerRunService,
+    now: () => "2026-04-30T07:52:00.000Z",
+    agentSeeds: [{
+      ownerPrincipalId: "principal-platform-owner",
+      organization,
+      agent: currentAgent,
+    }],
+  });
+
+  const dispatched = workflowService.dispatchWorkItem({
+    ownerPrincipalId: "principal-platform-owner",
+    workItem: {
+      targetAgentId: "agent-1",
+      sourceType: "human",
+      sourcePrincipalId: "principal-platform-owner",
+      goal: "执行新的运维资产巡检。",
+      priority: "normal",
+    },
+  });
+
+  assert.equal(dispatched.targetAgent.displayName, "青灯");
+  assert.equal(dispatched.targetAgent.departmentRole, "运维资产巡检负责人");
+});
+
 function buildOrganization() {
   return {
     organizationId: "org-platform",

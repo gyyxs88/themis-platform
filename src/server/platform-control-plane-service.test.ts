@@ -209,6 +209,112 @@ test("PlatformControlPlaneService 会为旧 snapshot 里的 agent 详情自动�
   assert.match(detail?.agent.agentCard?.employeeCode ?? "", /^EMP-/);
 });
 
+test("PlatformControlPlaneService 从 snapshot 恢复后新建员工不会复用已有 agent/principal id", () => {
+  let principalCounter = 0;
+  let agentCounter = 0;
+  const service = createInMemoryPlatformControlPlaneService({
+    now: () => "2026-04-30T10:00:00.000Z",
+    generatePrincipalId: () => `principal-agent-${++principalCounter}`,
+    generateAgentId: () => `agent-${++agentCounter}`,
+    snapshot: {
+      owners: [{
+        ownerPrincipalId: "principal-platform-owner",
+        organizations: [{
+          organizationId: "org-platform",
+          ownerPrincipalId: "principal-platform-owner",
+          displayName: "Platform Team",
+          slug: "platform-team",
+          createdAt: "2026-04-14T14:10:00.000Z",
+          updatedAt: "2026-04-14T14:10:00.000Z",
+        }],
+        principals: [{
+          principalId: "principal-agent-1",
+          organizationId: "org-platform",
+          displayName: "前端·澄",
+          createdAt: "2026-04-14T14:10:00.000Z",
+          updatedAt: "2026-04-14T14:10:00.000Z",
+        }],
+        agents: [{
+          agentId: "agent-1",
+          organizationId: "org-platform",
+          principalId: "principal-agent-1",
+          displayName: "前端·澄",
+          departmentRole: "前端",
+          mission: "负责 Web 工作台。",
+          status: "active",
+          createdAt: "2026-04-14T14:10:00.000Z",
+          updatedAt: "2026-04-14T14:10:00.000Z",
+        }],
+        workspacePolicies: [{
+          agentId: "agent-1",
+          canonicalWorkspacePath: null,
+          additionalWorkspacePaths: [],
+          createdAt: "2026-04-14T14:10:00.000Z",
+          updatedAt: "2026-04-14T14:10:00.000Z",
+        }],
+        runtimeProfiles: [{
+          agentId: "agent-1",
+          provider: null,
+          model: null,
+          reasoning: null,
+          createdAt: "2026-04-14T14:10:00.000Z",
+          updatedAt: "2026-04-14T14:10:00.000Z",
+        }],
+        authAccounts: [],
+        thirdPartyProviders: [],
+        projectBindings: [],
+        spawnPolicy: null,
+      }],
+    },
+  });
+
+  const created = service.createAgent({
+    ownerPrincipalId: "principal-platform-owner",
+    agent: {
+      departmentRole: "运维资产巡检负责人",
+      displayName: "青灯",
+    },
+  });
+
+  assert.equal(created.agent.agentId, "agent-2");
+  assert.equal(created.principal.principalId, "principal-agent-2");
+  assert.equal(service.getAgentDetail({
+    ownerPrincipalId: "principal-platform-owner",
+    agentId: "agent-1",
+  })?.agent.displayName, "前端·澄");
+  assert.equal(service.listAgents({ ownerPrincipalId: "principal-platform-owner" }).agents.length, 2);
+});
+
+test("PlatformControlPlaneService 更新员工档案遇到不支持字段会直接报错", () => {
+  const service = createInMemoryPlatformControlPlaneService({
+    now: () => "2026-04-30T10:10:00.000Z",
+    generateOrganizationId: () => "org-platform",
+    generatePrincipalId: () => "principal-agent-alpha",
+    generateAgentId: () => "agent-alpha",
+  });
+
+  service.createAgent({
+    ownerPrincipalId: "principal-platform-owner",
+    agent: {
+      departmentRole: "Platform",
+      displayName: "平台值班员",
+    },
+  });
+
+  assert.throws(
+    () => service.updateAgentCard({
+      ownerPrincipalId: "principal-platform-owner",
+      agentId: "agent-alpha",
+      card: {
+        reportLine: {
+          supervisorDisplayName: "Owner",
+        },
+      } as never,
+    }),
+    /Unsupported agent card field\(s\): reportLine/,
+  );
+});
+
 test("PlatformControlPlaneService 会在默认建员时复用唯一 organization，并在多 organization 下沿用 supervisor 所属组织", () => {
   const service = createInMemoryPlatformControlPlaneService({
     now: () => "2026-04-21T10:30:00.000Z",

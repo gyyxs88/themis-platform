@@ -431,6 +431,11 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
       }
+      options.workflowService.registerAgent({
+        ownerPrincipalId: payload.ownerPrincipalId,
+        organization: result.organization,
+        agent: result.agent,
+      });
       await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
@@ -454,6 +459,11 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
       }
+      options.workflowService.registerAgent({
+        ownerPrincipalId: payload.ownerPrincipalId,
+        organization: result.organization,
+        agent: result.agent,
+      });
       await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
@@ -467,6 +477,11 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
       }
+      options.workflowService.registerAgent({
+        ownerPrincipalId: payload.ownerPrincipalId,
+        organization: result.organization,
+        agent: result.agent,
+      });
       await recordStateMutation(options);
       return writeJson(response, 200, result);
     }
@@ -480,6 +495,11 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Agent ${payload.agentId ?? "unknown"} not found.`));
       }
+      options.workflowService.registerAgent({
+        ownerPrincipalId: payload.ownerPrincipalId,
+        organization: result.organization,
+        agent: result.agent,
+      });
       await recordStateMutation(options);
       return writeJson(response, 200, result);
     }

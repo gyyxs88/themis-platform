@@ -224,6 +224,27 @@ test("createPlatformApp 会暴露 agents 与 projects 最小控制面路由", as
     };
     assert.equal(paused.agent?.status, "paused");
 
+    const dispatchAfterPauseResponse = await fetch(`${baseUrl}/api/platform/work-items/dispatch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPrincipalId: "principal-platform-owner",
+        workItem: {
+          targetAgentId: "agent-alpha",
+          sourceType: "human",
+          goal: "验证 lifecycle 更新会同步到 workflow。",
+          priority: "normal",
+        },
+      }),
+    });
+    assert.equal(dispatchAfterPauseResponse.status, 200);
+    const dispatchAfterPause = await dispatchAfterPauseResponse.json() as {
+      targetAgent?: { status?: string };
+    };
+    assert.equal(dispatchAfterPause.targetAgent?.status, "paused");
+
     const bindingResponse = await fetch(`${baseUrl}/api/platform/projects/workspace-binding/upsert`, {
       method: "POST",
       headers: {
