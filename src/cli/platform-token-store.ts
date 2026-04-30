@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 export type PlatformServiceRole = "gateway" | "worker";
@@ -140,7 +140,19 @@ export class PlatformTokenStore {
       return { tokens: [] };
     }
 
-    const parsed = JSON.parse(readFileSync(storePath, "utf8")) as Partial<StoredPlatformTokenFile>;
+    const content = readFileSync(storePath, "utf8");
+    if (!content.trim()) {
+      return { tokens: [] };
+    }
+
+    let parsed: Partial<StoredPlatformTokenFile>;
+    try {
+      parsed = JSON.parse(content) as Partial<StoredPlatformTokenFile>;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`平台服务令牌文件无法解析：${storePath}：${message}`);
+    }
+
     return {
       tokens: Array.isArray(parsed.tokens) ? parsed.tokens as StoredPlatformServiceToken[] : [],
     };
@@ -149,7 +161,17 @@ export class PlatformTokenStore {
   private writeStore(store: StoredPlatformTokenFile): void {
     const storePath = resolvePlatformTokenStorePath(this.workingDirectory);
     mkdirSync(dirname(storePath), { recursive: true });
-    writeFileSync(storePath, JSON.stringify(store, null, 2));
+    const temporaryStorePath = `${storePath}.${process.pid}.${Date.now()}.tmp`;
+
+    try {
+      writeFileSync(temporaryStorePath, JSON.stringify(store, null, 2));
+      renameSync(temporaryStorePath, storePath);
+    } catch (error) {
+      if (existsSync(temporaryStorePath)) {
+        unlinkSync(temporaryStorePath);
+      }
+      throw error;
+    }
   }
 }
 

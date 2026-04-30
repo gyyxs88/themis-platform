@@ -35,6 +35,7 @@
 - 当前仓仍通过 `file:../themis-contracts` 依赖共享契约；真实部署时需要把 `themis-contracts` 放到同级目录，再执行 `npm ci`。
 - `src/server/platform-main.ts` 现在会先读取仓库根目录 `.env/.env.local`，并按 `THEMIS_HOST` / `THEMIS_PORT` 启动；默认监听已改成 `0.0.0.0:3100`，不再固定写死 `127.0.0.1:3200`。
 - 平台 Web 登录口令当前通过环境变量 `THEMIS_PLATFORM_WEB_ACCESS_TOKEN`（可选 `THEMIS_PLATFORM_WEB_ACCESS_TOKEN_LABEL`）提供；平台服务 Bearer token 仍由 `infra/local/platform-service-tokens.json` 承载。
+- `infra/local/platform-service-tokens.json` 只保存平台服务令牌哈希和元数据；如果该文件异常变成空文件，平台会按“暂无令牌”处理，避免鉴权链抛 JSON 解析错误。正式机可用 `infra/local/platform-bootstrap.env` 中保留的 gateway / worker token 通过 `./themis-platform auth platform add ...` 重建令牌元数据；写入时会先写临时文件再原子替换，降低半截文件风险。
 - 当前支持本地 runtime snapshot：`src/server/platform-main.ts` 会默认把 `nodes / control-plane / workflow / worker-runs` 状态落到 `infra/platform/runtime-state.json`；如需自定义路径，可配置 `THEMIS_PLATFORM_RUNTIME_SNAPSHOT_FILE`。
 - 当前支持本地 execution runtime store：`src/server/platform-main.ts` 会默认把每个 run 的 `assigned-run / state / events` 写到 `infra/platform/runtime-runs/`；如需自定义路径，可配置 `THEMIS_PLATFORM_EXECUTION_RUNTIME_ROOT`。
 - 新建 agent 当前会默认落一个 `runtimeProfile(model=gpt-5.5, reasoning=xhigh)`；如需偏离，可继续走 `execution-boundary/update` 覆盖。

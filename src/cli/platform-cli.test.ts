@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -86,6 +86,32 @@ test("themis-platform auth platform 最小闭环", () => {
     const removeResult = runCli(["auth", "platform", "remove", "gateway-beta"], workspace);
     assert.equal(removeResult.code, 0);
     assert.match(removeResult.stdout, /状态：revoked/);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test("themis-platform auth platform 会把空 token store 当作空列表并可继续写入", () => {
+  const workspace = createWorkspace();
+  const storePath = resolve(workspace, "infra/local/platform-service-tokens.json");
+
+  try {
+    mkdirSync(resolve(workspace, "infra/local"), { recursive: true });
+    writeFileSync(storePath, "");
+
+    const listResult = runCli(["auth", "platform", "list"], workspace);
+    assert.equal(listResult.code, 0);
+    assert.match(listResult.stdout, /暂无平台服务令牌/);
+
+    const addResult = runCli(
+      ["auth", "platform", "add", "gateway-alpha", "--role", "gateway", "--owner-principal", "principal-owner"],
+      workspace,
+      "platform-secret\nplatform-secret\n",
+    );
+    assert.equal(addResult.code, 0);
+
+    const stored = JSON.parse(readFileSync(storePath, "utf8")) as { tokens?: Array<{ label?: string }> };
+    assert.equal(stored.tokens?.[0]?.label, "gateway-alpha");
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
