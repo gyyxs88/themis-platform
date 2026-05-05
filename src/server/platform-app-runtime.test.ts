@@ -96,14 +96,44 @@ test("createPlatformApp 会把 queued work-item 在 worker pull 时分配成新 
           goal: "让独立平台仓自己派一条 run",
           priority: "high",
           projectId: "project-runtime",
+          contextPacket: {
+            feishuBaseTargets: {
+              baseUrl: "https://example.feishu.cn/base/app123",
+              domainTableId: "tbl-domain",
+              serverTableId: "tbl-server",
+            },
+            operationsLedgerSnapshot: {
+              summary: "三方台账待对齐。",
+              assetIds: ["asset-domain", "asset-server"],
+            },
+            previousRunFacts: [{
+              workItemId: "work-item-platform-57",
+              finding: "缺少 Base 定位。",
+            }],
+          },
         },
       }),
     });
     assert.equal(dispatch.status, 200);
     const dispatchPayload = await dispatch.json() as {
-      workItem?: { workItemId?: string; status?: string };
+      workItem?: { workItemId?: string; status?: string; contextPacket?: unknown };
     };
     assert.equal(dispatchPayload.workItem?.status, "queued");
+    assert.deepEqual(dispatchPayload.workItem?.contextPacket, {
+      feishuBaseTargets: {
+        baseUrl: "https://example.feishu.cn/base/app123",
+        domainTableId: "tbl-domain",
+        serverTableId: "tbl-server",
+      },
+      operationsLedgerSnapshot: {
+        summary: "三方台账待对齐。",
+        assetIds: ["asset-domain", "asset-server"],
+      },
+      previousRunFacts: [{
+        workItemId: "work-item-platform-57",
+        finding: "缺少 Base 定位。",
+      }],
+    });
 
     const pull = await fetch(`${baseUrl}/api/platform/worker/runs/pull`, {
       method: "POST",
@@ -117,13 +147,14 @@ test("createPlatformApp 会把 queued work-item 在 worker pull 时分配成新 
     });
     assert.equal(pull.status, 200);
     const pullPayload = await pull.json() as {
-      workItem?: { workItemId?: string; status?: string };
+      workItem?: { workItemId?: string; status?: string; contextPacket?: unknown };
       run?: { status?: string; nodeId?: string };
       executionLease?: { status?: string };
       executionContract?: { workspacePath?: string };
     };
     assert.equal(pullPayload.workItem?.workItemId, dispatchPayload.workItem?.workItemId);
     assert.equal(pullPayload.workItem?.status, "queued");
+    assert.deepEqual(pullPayload.workItem?.contextPacket, dispatchPayload.workItem?.contextPacket);
     assert.equal(pullPayload.run?.status, "created");
     assert.equal(pullPayload.run?.nodeId, "node-runtime");
     assert.equal(pullPayload.executionLease?.status, "active");
