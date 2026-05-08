@@ -188,6 +188,25 @@ test("platform-main 会把 heartbeat 只落本地 runtime snapshot，不刷 MySQ
     const cookie = login.headers.get("set-cookie")?.split(";")[0];
     assert(cookie);
 
+    const repeatedRegister = await fetch(`${baseUrl}/api/platform/nodes/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+      },
+      body: JSON.stringify({
+        ownerPrincipalId,
+        node: {
+          nodeId: "node-runtime",
+          displayName: "Worker Runtime",
+          slotCapacity: 1,
+          slotAvailable: 0,
+        },
+      }),
+    });
+    assert.equal(repeatedRegister.status, 200);
+    assert.equal(sharedStore.replaceCount, 1);
+
     const heartbeat = await fetch(`${baseUrl}/api/platform/nodes/heartbeat`, {
       method: "POST",
       headers: {

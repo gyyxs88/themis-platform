@@ -287,12 +287,19 @@ async function handlePlatformRequest(
       if (!payload) {
         return;
       }
+      const existingNodeId = normalizeOptionalText(payload.node?.nodeId);
+      const existingNode = existingNodeId
+        ? options.nodeService.getNodeDetail({
+          ownerPrincipalId: payload.ownerPrincipalId,
+          nodeId: existingNodeId,
+        })
+        : null;
       const result = options.nodeService.registerNode(payload, {
         nodeIp: resolveRequestIp(request),
       });
       await recordStateMutation(options, {
-        reason: "node-register",
-        mirrorSharedSnapshot: true,
+        reason: existingNode ? "node-heartbeat" : "node-register",
+        mirrorSharedSnapshot: !existingNode,
       });
       return writeJson(response, 200, result);
     }
