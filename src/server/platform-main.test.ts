@@ -1,15 +1,39 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { once } from "node:events";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loadProjectEnv } from "../config/project-env.js";
 import {
   bootstrapMessage,
+  createPlatformServerFromEnv,
   resolvePlatformExecutionRuntimeRoot,
   resolvePlatformMainConfig,
   resolvePlatformRuntimeSnapshotFile,
 } from "./platform-main.js";
+import {
+  createEmptyPlatformRuntimeSnapshot,
+  savePlatformRuntimeSnapshotFile,
+  type PlatformRuntimeSnapshot,
+} from "./platform-runtime-snapshot.js";
+import type { PlatformSharedControlPlaneSnapshotStore } from "./platform-shared-control-plane-store.js";
+
+class TrackingSharedSnapshotStore implements PlatformSharedControlPlaneSnapshotStore {
+  replaceCount = 0;
+  snapshot = createEmptyPlatformRuntimeSnapshot(() => "2026-05-08T00:00:00.000Z");
+
+  async ensureSchema(): Promise<void> {}
+
+  async exportSharedSnapshot(): Promise<PlatformRuntimeSnapshot> {
+    return this.snapshot;
+  }
+
+  async replaceSharedSnapshot(snapshot: PlatformRuntimeSnapshot): Promise<void> {
+    this.replaceCount += 1;
+    this.snapshot = snapshot;
+  }
+}
 
 test("resolvePlatformMainConfig 会给平台服务使用生产监听默认值", () => {
   const config = resolvePlatformMainConfig({});
@@ -99,6 +123,106 @@ test("loadProjectEnv 后 resolvePlatformMainConfig 会读取 .env.local", () => 
       delete process.env.THEMIS_PORT;
     }
 
+    rmSync(workingDirectory, { recursive: true, force: true });
+  }
+});
+
+test("platform-main 会把 heartbeat 只落本地 runtime snapshot，不刷 MySQL shared snapshot", async () => {
+  const workingDirectory = mkdtempSync(join(tmpdir(), "themis-platform-heartbeat-mirror-"));
+  const runtimeSnapshotFile = join(workingDirectory, "runtime-state.json");
+  const ownerPrincipalId = "principal-platform-owner";
+  const webToken = "platform-test-secret";
+  const organization = {
+    organizationId: "org-platform",
+    ownerPrincipalId,
+    displayName: "Platform Team",
+    slug: "platform-team",
+    createdAt: "2026-05-08T00:00:00.000Z",
+    updatedAt: "2026-05-08T00:00:00.000Z",
+  };
+  const initialSnapshot = createEmptyPlatformRuntimeSnapshot(() => "2026-05-08T00:00:00.000Z");
+  initialSnapshot.nodeService.organizations.push(organization);
+  initialSnapshot.nodeService.nodes.push({
+    nodeId: "node-runtime",
+    organizationId: organization.organizationId,
+    displayName: "Worker Runtime",
+    status: "online",
+    slotCapacity: 1,
+    slotAvailable: 1,
+    heartbeatTtlSeconds: 30,
+    createdAt: "2026-05-08T00:00:00.000Z",
+    updatedAt: "2026-05-08T00:00:00.000Z",
+  });
+  savePlatformRuntimeSnapshotFile(runtimeSnapshotFile, initialSnapshot);
+
+  const sharedStore = new TrackingSharedSnapshotStore();
+  const platform = await createPlatformServerFromEnv({
+    THEMIS_PLATFORM_CONTROL_PLANE_DRIVER: "mysql",
+    THEMIS_PLATFORM_MYSQL_DATABASE: "themis_platform_test",
+    THEMIS_MANAGED_AGENT_CONTROL_PLANE_DATABASE_FILE: "control-plane.db",
+    THEMIS_PLATFORM_RUNTIME_SNAPSHOT_FILE: "runtime-state.json",
+    THEMIS_PLATFORM_SCHEDULER_INTERVAL_MS: "0",
+    THEMIS_PLATFORM_WEB_ACCESS_TOKEN: webToken,
+  } as NodeJS.ProcessEnv, workingDirectory, {
+    createMySqlStore: () => sharedStore,
+  });
+
+  assert.equal(sharedStore.replaceCount, 1);
+
+  try {
+    platform.server.listen(0, "127.0.0.1");
+    await once(platform.server, "listening");
+    const address = platform.server.address();
+    assert(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const login = await fetch(`${baseUrl}/api/web-auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        token: webToken,
+      }),
+    });
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get("set-cookie")?.split(";")[0];
+    assert(cookie);
+
+    const heartbeat = await fetch(`${baseUrl}/api/platform/nodes/heartbeat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+      },
+      body: JSON.stringify({
+        ownerPrincipalId,
+        node: {
+          nodeId: "node-runtime",
+          slotAvailable: 0,
+        },
+      }),
+    });
+    assert.equal(heartbeat.status, 200);
+    assert.equal(sharedStore.replaceCount, 1);
+
+    const runtimeAfterHeartbeat = JSON.parse(readFileSync(runtimeSnapshotFile, "utf8")) as PlatformRuntimeSnapshot;
+    assert.equal(runtimeAfterHeartbeat.nodeService.nodes[0]?.slotAvailable, 0);
+
+    const drain = await fetch(`${baseUrl}/api/platform/nodes/drain`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+      },
+      body: JSON.stringify({
+        ownerPrincipalId,
+        nodeId: "node-runtime",
+      }),
+    });
+    assert.equal(drain.status, 200);
+    assert.equal(sharedStore.replaceCount, 2);
+  } finally {
+    platform.server.close();
     rmSync(workingDirectory, { recursive: true, force: true });
   }
 });

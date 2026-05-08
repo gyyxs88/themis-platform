@@ -10,7 +10,7 @@ import { createInMemoryPlatformGovernanceService } from "./platform-governance-s
 import { createInMemoryPlatformMeetingRoomService } from "./platform-meeting-room-service.js";
 import { createInMemoryPlatformNodeService } from "./platform-node-service.js";
 import { createInMemoryPlatformOncallService } from "./platform-oncall-service.js";
-import { createPlatformApp } from "./platform-app.js";
+import { createPlatformApp, type PlatformStateMutation } from "./platform-app.js";
 import {
   applyPlatformRuntimeSnapshot,
   exportPlatformRuntimeSnapshot,
@@ -28,6 +28,10 @@ const DEFAULT_PLATFORM_SERVICE_NAME = "themis-platform";
 const DEFAULT_PLATFORM_SCHEDULER_INTERVAL_MS = 5000;
 const DEFAULT_PLATFORM_RUNTIME_SNAPSHOT_FILE = "infra/platform/runtime-state.json";
 const DEFAULT_PLATFORM_EXECUTION_RUNTIME_ROOT = "infra/platform/runtime-runs";
+const DEFAULT_PLATFORM_STATE_MUTATION: PlatformStateMutation = {
+  reason: "worker-run",
+  mirrorSharedSnapshot: true,
+};
 
 export interface PlatformMainConfig {
   host: string;
@@ -186,11 +190,11 @@ export async function createPlatformServerFromEnv(
   };
   let persistQueue = Promise.resolve();
 
-  const persistPlatformState = async () => {
+  const persistPlatformState = async (mutation: PlatformStateMutation) => {
     const snapshot = exportCurrentSnapshot();
     saveCurrentRuntimeSnapshot(snapshot);
 
-    if (!controlPlaneRuntime.mirror) {
+    if (!controlPlaneRuntime.mirror || !mutation.mirrorSharedSnapshot) {
       return;
     }
 
@@ -205,9 +209,9 @@ export async function createPlatformServerFromEnv(
     }
   };
 
-  const enqueuePersistPlatformState = () => {
+  const enqueuePersistPlatformState = (mutation: PlatformStateMutation = DEFAULT_PLATFORM_STATE_MUTATION) => {
     const pending = persistQueue.then(async () => {
-      await persistPlatformState();
+      await persistPlatformState(mutation);
     });
     persistQueue = pending.catch(() => {});
     return pending;

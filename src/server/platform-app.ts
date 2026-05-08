@@ -112,7 +112,7 @@ export interface PlatformAppOptions {
   appDisplayName?: string;
   accessMode?: "open" | "protected";
   defaultWorkspacePath?: string;
-  onStateMutation?: () => void | Promise<void>;
+  onStateMutation?: (mutation: PlatformStateMutation) => void | Promise<void>;
   executionRuntimeStore?: PlatformExecutionRuntimeStore;
   nodeService?: PlatformNodeService;
   workerRunService?: PlatformWorkerRunService;
@@ -126,6 +126,21 @@ export interface PlatformAppOptions {
   webAuthTokenLabel?: string;
   authService?: PlatformWebAccessService;
 }
+
+export interface PlatformStateMutation {
+  reason: PlatformStateMutationReason;
+  mirrorSharedSnapshot: boolean;
+}
+
+export type PlatformStateMutationReason =
+  | "node-register"
+  | "node-heartbeat"
+  | "node-governance"
+  | "agent-control-plane"
+  | "agent-mailbox"
+  | "meeting-room"
+  | "work-item"
+  | "worker-run";
 
 export function createPlatformApp(options: PlatformAppOptions = {}): Server {
   const serviceName = options.serviceName ?? "themis-platform";
@@ -195,7 +210,7 @@ interface HandlePlatformRequestOptions {
   appDisplayName: string;
   accessMode: "open" | "protected";
   defaultWorkspacePath: string;
-  onStateMutation?: () => void | Promise<void>;
+  onStateMutation?: (mutation: PlatformStateMutation) => void | Promise<void>;
   executionRuntimeStore?: PlatformExecutionRuntimeStore;
   nodeService: PlatformNodeService;
   workerRunService: PlatformWorkerRunService;
@@ -275,7 +290,10 @@ async function handlePlatformRequest(
       const result = options.nodeService.registerNode(payload, {
         nodeIp: resolveRequestIp(request),
       });
-      await recordStateMutation(options);
+      await recordStateMutation(options, {
+        reason: "node-register",
+        mirrorSharedSnapshot: true,
+      });
       return writeJson(response, 200, result);
     }
 
@@ -290,7 +308,10 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.node?.nodeId ?? "unknown"} not found.`));
       }
-      await recordStateMutation(options);
+      await recordStateMutation(options, {
+        reason: "node-heartbeat",
+        mirrorSharedSnapshot: false,
+      });
       return writeJson(response, 200, result);
     }
 
@@ -324,7 +345,10 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
       }
-      await recordStateMutation(options);
+      await recordStateMutation(options, {
+        reason: "node-governance",
+        mirrorSharedSnapshot: true,
+      });
       return writeJson(response, 200, result);
     }
 
@@ -337,7 +361,10 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
       }
-      await recordStateMutation(options);
+      await recordStateMutation(options, {
+        reason: "node-governance",
+        mirrorSharedSnapshot: true,
+      });
       return writeJson(response, 200, result);
     }
 
@@ -350,7 +377,10 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
       }
-      await recordStateMutation(options);
+      await recordStateMutation(options, {
+        reason: "node-governance",
+        mirrorSharedSnapshot: true,
+      });
       return writeJson(response, 200, result);
     }
 
@@ -363,7 +393,10 @@ async function handlePlatformRequest(
       if (!result) {
         return writeJson(response, 404, buildNotFoundErrorResponse(`Node ${payload.nodeId ?? "unknown"} not found.`));
       }
-      await recordStateMutation(options);
+      await recordStateMutation(options, {
+        reason: "node-governance",
+        mirrorSharedSnapshot: true,
+      });
       return writeJson(response, 200, result);
     }
 
@@ -1228,8 +1261,16 @@ function normalizeOptionalText(value: unknown): string | null {
   return normalized ? normalized : null;
 }
 
-async function recordStateMutation(options: HandlePlatformRequestOptions): Promise<void> {
-  await options.onStateMutation?.();
+const DEFAULT_SHARED_STATE_MUTATION: PlatformStateMutation = {
+  reason: "work-item",
+  mirrorSharedSnapshot: true,
+};
+
+async function recordStateMutation(
+  options: HandlePlatformRequestOptions,
+  mutation: PlatformStateMutation = DEFAULT_SHARED_STATE_MUTATION,
+): Promise<void> {
+  await options.onStateMutation?.(mutation);
 }
 
 function connectNodeExecutionLeaseRuntime(
